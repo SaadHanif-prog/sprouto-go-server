@@ -1,21 +1,84 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-const userSchema = new mongoose.Schema({
-  email: {
-    type: String,
-    required: true,
-  },
-  username: {
-    type: String,
-    required: true,
-  },
-  password: {
-    type: String,
-    required: true,
-  },
-});
+const userSchema = new mongoose.Schema(
+  {
+    role: {
+      type: String,
+      enum: ["admin", "client", "superadmin"],
+      default: "client",
+    },
+    title: {
+      type: String,
+      required: true,
+      enum: ["Mr", "Mrs", "Ms", "Miss", "Dr", "Other"],
+    },
+    firstname: {
+      type: String,
+      required: true,
+    },
+    surname: {
+      type: String,
+      required: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
 
+    company: {
+      name: {
+        type: String,
+        required: true,
+      },
+      number: {
+        type: String,
+        required: true,
+      },
+    },
+
+    address: {
+      line1: {
+        type: String,
+        required: true,
+      },
+      county: {
+        type: String,
+        required: true,
+      },
+      city: {
+        type: String,
+        required: true,
+      },
+      postcode: {
+        type: String,
+        required: true,
+      },
+    },
+
+    // Subscription Info
+    subscription: {
+      plan: {
+        type: String,
+        enum: ["starter", "pro"],
+        required: true,
+      },
+      billingCycle: {
+        type: String,
+        enum: ["monthly", "annually"],
+        required: true,
+      },
+    },
+  },
+  { timestamps: true },
+);
+
+// Hash password before save
 userSchema.pre("save", async function (next) {
   if (this.isModified("password")) {
     this.password = await bcrypt.hash(this.password, 10);
@@ -23,6 +86,7 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
+// Compare password
 userSchema.methods.comparePassword = async function (password) {
   return bcrypt.compare(password, this.password);
 };

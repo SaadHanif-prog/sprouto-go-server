@@ -21,10 +21,18 @@ const cookieOptions = {
   sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
 };
 
-
-// Register
+// ================= REGISTER =================
 const register = asyncHandler(async (req, res) => {
-  const { username, email, password } = req.body;
+  const {
+    title,
+    firstname,
+    surname,
+    email,
+    password,
+    company,
+    address,
+    subscription,
+  } = req.body;
 
   const existingUser = await UserModel.findOne({ email });
   if (existingUser) {
@@ -33,10 +41,27 @@ const register = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  const newUser = await UserModel.create({ username, email, password });
+  const newUser = await UserModel.create({
+    title,
+    firstname,
+    surname,
+    email,
+    password,
+    company,
+    address,
+    subscription,
+  });
 
-  const accessToken = generateAccessToken({ id: newUser.id, email: newUser.email, username : newUser.username });
-  const refreshToken = generateRefreshToken({ id: newUser.id, email: newUser.email, username : newUser.username });
+  const payload = {
+    id: newUser.id,
+    email: newUser.email,
+    firstname: newUser.firstname,
+    surname: newUser.surname,
+    role: newUser.role,
+  };
+
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = generateRefreshToken(payload);
 
   res.cookie("refreshToken", refreshToken, cookieOptions);
   res.cookie("accessToken", accessToken, cookieOptions);
@@ -44,12 +69,16 @@ const register = asyncHandler(async (req, res) => {
   return res.status(201).json({
     success: true,
     message: "User registered successfully.",
-    data: { id: newUser.id, username: newUser.username, email: newUser.email },
+    data: {
+      id: newUser.id,
+      fullname: `${newUser.firstname} ${newUser.surname}`,
+      email: newUser.email,
+      role: newUser.role,
+    },
   });
 });
 
-
-// Login
+// ================= LOGIN =================
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
@@ -67,8 +96,16 @@ const login = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  const accessToken = generateAccessToken({ id: user.id, email: user.email, username: user.username });
-  const refreshToken = generateRefreshToken({ id: user.id, email: user.email, username: user.username });
+  const payload = {
+    id: user.id,
+    email: user.email,
+    firstname: user.firstname,
+    surname: user.surname,
+    role: user.role,
+  };
+
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = generateRefreshToken(payload);
 
   res.cookie("refreshToken", refreshToken, cookieOptions);
   res.cookie("accessToken", accessToken, cookieOptions);
@@ -76,13 +113,19 @@ const login = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message: "Login successful.",
-    data: { id: user.id, username: user.username, email: user.email },
+    data: {
+      id: user.id,
+      fullname: `${user.firstname} ${user.surname}`,
+      email: user.email,
+      role: user.role,
+    },
   });
 });
 
-// Refresh Token
+// ================= REFRESH TOKEN =================
 const refreshAccessToken = asyncHandler(async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
+
   if (!refreshToken) {
     const error = new Error("Refresh token is required.");
     error.status = 403;
@@ -92,40 +135,48 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   try {
     const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
 
-    const accessToken = generateAccessToken({ id: decoded.id, email: decoded.email, username: decoded.username });
+    const payload = {
+      id: decoded.id,
+      email: decoded.email,
+      firstname: decoded.firstname,
+      surname: decoded.surname,
+      role: decoded.role,
+    };
+
+    const accessToken = generateAccessToken(payload);
 
     res.cookie("accessToken", accessToken, cookieOptions);
 
     return res.status(200).json({
       success: true,
       message: "Access token refreshed successfully.",
-      data: { id: decoded.id, email: decoded.email },
+      data: payload,
     });
   } catch (err) {
     res.clearCookie("refreshToken", cookieOptions);
     res.clearCookie("accessToken", cookieOptions);
+
     const error = new Error("Invalid or expired refresh token.");
     error.status = 403;
     throw error;
   }
 });
 
-
-// verify me 
+// ================= VERIFY ME =================
 const verifyMe = asyncHandler((req, res) => {
   res.json({
     data: {
       id: req.user.id,
       email: req.user.email,
-      username: req.user.username,
+      firstname: req.user.firstname,
+      surname: req.user.surname,
+      role: req.user.role,
     },
   });
 });
 
-
-// Logout
+// ================= LOGOUT =================
 const logout = asyncHandler(async (req, res) => {
-
   res.clearCookie("refreshToken", cookieOptions);
   res.clearCookie("accessToken", cookieOptions);
 
@@ -140,5 +191,5 @@ module.exports = {
   login,
   refreshAccessToken,
   logout,
-  verifyMe
+  verifyMe,
 };
