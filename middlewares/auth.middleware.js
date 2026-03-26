@@ -14,10 +14,13 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET);
+
     req.user = {
       id: decoded.id,
       email: decoded.email,
-      username: decoded.username
+      firstname: decoded.firstname,
+      surname: decoded.surname,
+      role: decoded.role,
     };
 
     next();
