@@ -21,43 +21,82 @@ exports.getSites = asyncHandler(async (req, res) => {
  * @desc Create a new site (with plan limit check)
  * @route POST /api/sites
  */
+
 exports.createSite = asyncHandler(async (req, res) => {
   const userId = req.user.id;
-  const { url } = req.body;
+  const { name, url } = req.body;
 
-  if (!url) {
-    return res.status(400).json({
-      message: "URL is required",
-    });
+  if (!url || !name) {
+    return res.status(400).json({ message: "Name and URL are required" });
   }
 
-  // 1️⃣ Get user
   const user = await User.findById(userId);
 
   if (!user) {
     return res.status(404).json({ message: "User not found" });
   }
 
-  // 2️⃣ Calculate allowed sites from activePlans
-  const allowedSites = user.activePlans.reduce(
-    (sum, plan) => sum + (plan.sitesLimit || 0),
-    0
+  const now = new Date();
+
+  // ✅ 1. Active entitlements
+  const activeEntitlements = user.entitlements.filter(
+    (e) => new Date(e.expiresAt) > now
   );
 
-  // 3️⃣ Count current sites
+  if (!activeEntitlements.length) {
+    return res.status(403).json({
+      message: "No active subscription found",
+    });
+  }
+
+  // ✅ 2. Plan limits (hardcoded)
+  const PLAN_LIMITS = {
+    starter: 1,
+    pro: 3,
+  };
+
+  // ✅ 3. Calculate total allowed sites
+  const allowedSites = activeEntitlements.reduce((sum, e) => {
+    return sum + (PLAN_LIMITS[e.plan] || 0);
+  }, 0);
+
+  // ✅ 4. Count current sites
   const totalSites = await Site.countDocuments({ userId });
 
-  // 4️⃣ Enforce limit
   if (totalSites >= allowedSites) {
     return res.status(403).json({
       message: "Site limit reached. Please upgrade your plan.",
     });
   }
 
-  // 5️⃣ Create site
+  // ✅ 5. Select entitlement with available space
+  let selectedEntitlement = null;
+
+  for (const entitlement of activeEntitlements) {
+    const count = await Site.countDocuments({
+      entitlementId: entitlement._id,
+    });
+
+    const limit = PLAN_LIMITS[entitlement.plan] || 0;
+
+    if (count < limit) {
+      selectedEntitlement = entitlement;
+      break;
+    }
+  }
+
+  if (!selectedEntitlement) {
+    return res.status(403).json({
+      message: "All plans are fully utilized",
+    });
+  }
+
+  // ✅ 6. Create site
   const site = await Site.create({
+    name,
     url,
     userId,
+    entitlementId: selectedEntitlement._id,
   });
 
   res.status(201).json({

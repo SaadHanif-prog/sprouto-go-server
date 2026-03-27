@@ -8,24 +8,29 @@ const userSchema = new mongoose.Schema(
       enum: ["admin", "client", "superadmin"],
       default: "client",
     },
+
     title: {
       type: String,
       required: true,
       enum: ["Mr", "Mrs", "Ms", "Miss", "Dr", "Other"],
     },
+
     firstname: {
       type: String,
       required: true,
     },
+
     surname: {
       type: String,
       required: true,
     },
+
     email: {
       type: String,
       required: true,
       unique: true,
     },
+
     password: {
       type: String,
       required: true,
@@ -61,59 +66,33 @@ const userSchema = new mongoose.Schema(
       },
     },
 
-    // Subscription Info
+    // 🔹 Stripe Reference (NOT source of truth anymore)
     subscription: {
-      plan: {
-        type: String,
-        enum: ["starter", "pro"],
-      },
-
-      billingCycle: {
-        type: String,
-        enum: ["monthly", "annually"],
-      },
-
-      status: {
-        type: String,
-        enum: ["inactive", "pending", "active", "canceled"],
-        default: "inactive",
-      },
-
-      stripeCustomerId: {
-        type: String,
-      },
-
-      stripeSubscriptionId: {
-        type: String,
-      },
-
-      stripePriceId: {
-        type: String,
-      },
-
-      currentPeriodEnd: {
-        type: Date,
-      },
+      stripeCustomerId: String,
     },
 
-    activePlans: [
+    // 🔥 REAL SOURCE OF TRUTH
+    entitlements: [
       {
         plan: {
           type: String,
           enum: ["starter", "pro"],
           required: true,
         },
-        sitesLimit: {
-          type: Number,
-          required: true,
+
+        stripeSubscriptionId: {
+          type: String,
+          required: true, // 🔥 must for mapping
         },
+
         expiresAt: {
           type: Date,
+          required: true,
         },
       },
     ],
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 // Hash password before save

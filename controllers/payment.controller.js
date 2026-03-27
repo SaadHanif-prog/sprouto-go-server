@@ -17,10 +17,9 @@ const PRICE_MAP = {
   },
 };
 
-/**
- * @desc Create Subscription (Stripe Elements flow)
- * @route POST /api/subscription/create
- */
+// ==============================
+// CREATE SUBSCRIPTION
+// ==============================
 exports.createSubscription = asyncHandler(async (req, res) => {
   const { planId, billingCycle } = req.body;
 
@@ -41,9 +40,7 @@ exports.createSubscription = asyncHandler(async (req, res) => {
     });
   }
 
-  /**
-   * 1. Create or reuse Stripe customer
-   */
+  // 1. Create / reuse customer
   let customerId = user.subscription?.stripeCustomerId;
 
   if (!customerId) {
@@ -54,40 +51,30 @@ exports.createSubscription = asyncHandler(async (req, res) => {
     customerId = customer.id;
 
     user.subscription = {
-      ...user.subscription,
       stripeCustomerId: customerId,
     };
 
     await user.save();
   }
 
-  /**
-   * 2. Create subscription
-   */
-const subscription = await stripe.subscriptions.create({
-  customer: customerId,
-  items: [{ price: priceId }],
-  payment_behavior: "default_incomplete",
-  collection_method: "charge_automatically",
+  // 2. Create subscription
+  const subscription = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [{ price: priceId }],
+    payment_behavior: "default_incomplete",
+    collection_method: "charge_automatically",
+    payment_settings: {
+      save_default_payment_method: "on_subscription",
+    },
+    expand: ["latest_invoice.payment_intent"],
+  });
 
-  // ✅ KEEP ONLY THIS
-  payment_settings: {
-    save_default_payment_method: "on_subscription",
-  },
-
-  expand: ["latest_invoice.payment_intent"],
-});
-  /**
-   * 3. Safely resolve invoice ID
-   */
+  // 3. Get invoice
   const invoiceId =
     typeof subscription.latest_invoice === "string"
       ? subscription.latest_invoice
       : subscription.latest_invoice?.id;
 
-  /**
-   * 4. Retrieve invoice with payment_intent expanded
-   */
   const invoice = await stripe.invoices.retrieve(invoiceId, {
     expand: ["payment_intent"],
   });
@@ -103,32 +90,21 @@ const subscription = await stripe.subscriptions.create({
     });
   }
 
-  /**
-   * 5. Save subscription (pending until webhook confirms)
-   */
+  // 4. Save minimal Stripe reference
   user.subscription = {
-    plan: planId,
-    billingCycle,
-    status: "pending",
     stripeCustomerId: customerId,
-    stripeSubscriptionId: subscription.id,
-    stripePriceId: priceId,
-    currentPeriodEnd: null,
   };
 
   await user.save();
 
-  /**
-   * 6. Return client secret
-   */
   res.json({
     clientSecret: paymentIntent.client_secret,
   });
 });
 
-/**
- * @desc Stripe Webhook
- */
+// ==============================
+// STRIPE WEBHOOK
+// ==============================
 exports.stripeWebhook = asyncHandler(async (req, res) => {
   const sig = req.headers["stripe-signature"];
 
@@ -138,119 +114,183 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET
+      process.env.STRIPE_WEBHOOK_SECRET,
     );
   } catch (err) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // ✅ plan → sites mapping
-  const planLimits = {
-    starter: 1,
-    pro: 3,
-  };
-
   switch (event.type) {
-    case "invoice.payment_succeeded": {
-      const invoice = event.data.object;
-      const customerId = invoice.customer;
-      const subscriptionId = invoice.subscription;
-
-      const user = await User.findOne({
-        "subscription.stripeCustomerId": customerId,
-      });
-
-      if (!user) break;
-
-      const periodEnd = invoice.lines?.data?.[0]?.period?.end || null;
-
-      user.subscription.status = "active";
-      user.subscription.stripeSubscriptionId = subscriptionId;
-
-      if (periodEnd) {
-        user.subscription.currentPeriodEnd = new Date(periodEnd * 1000);
-      }
-
-      // ✅ ADD TO activePlans
-      const currentPlan = user.subscription.plan;
-
-      if (currentPlan && planLimits[currentPlan]) {
-        user.activePlans.push({
-          plan: currentPlan,
-          sitesLimit: planLimits[currentPlan],
-          expiresAt: user.subscription.currentPeriodEnd || null,
-        });
-      }
-
-      await user.save();
-      break;
-    }
-
-    case "invoice.payment_failed": {
-      const invoice = event.data.object;
-      const customerId = invoice.customer;
-
-      const user = await User.findOne({
-        "subscription.stripeCustomerId": customerId,
-      });
-
-      if (!user) break;
-
-      user.subscription.status = "inactive";
-
-      // ❌ OPTIONAL: remove plan on failure
-      user.activePlans = user.activePlans.filter(
-        (p) => p.plan !== user.subscription.plan
-      );
-
-      await user.save();
-      break;
-    }
-
+    // =========================================================
+    // ✅ SUBSCRIPTION UPDATED (CREATE + RENEW)
+    // =========================================================
     case "customer.subscription.updated": {
-      const sub = event.data.object;
+      try {
+        console.log("✅ subscription.updated triggered");
 
-      const user = await User.findOne({
-        "subscription.stripeSubscriptionId": sub.id,
-      });
+        const rawSub = event.data.object;
 
-      if (!user) break;
+        // 🔥 ALWAYS FETCH FULL OBJECT (fixes missing fields issue)
+        const sub = await stripe.subscriptions.retrieve(rawSub.id);
 
-      let status = "inactive";
-      if (sub.status === "active") status = "active";
-      if (sub.status === "past_due") status = "inactive";
-      if (sub.status === "canceled") status = "canceled";
-      if (sub.status === "unpaid") status = "inactive";
+        const customerId = sub.customer;
+        const subscriptionId = sub.id;
 
-      user.subscription.status = status;
+        console.log("customerId:", customerId);
+        console.log("subscriptionId:", subscriptionId);
+        console.log("status:", sub.status);
 
-      if (sub.current_period_end) {
-        user.subscription.currentPeriodEnd = new Date(
-          sub.current_period_end * 1000
+        // ✅ Only proceed if active
+        if (sub.status !== "active") {
+          console.log("⚠️ Subscription not active, skipping");
+          break;
+        }
+
+        const user = await User.findOne({
+          "subscription.stripeCustomerId": customerId,
+        });
+
+        if (!user) {
+          console.log("❌ User not found");
+          break;
+        }
+
+        const priceId = sub.items?.data?.[0]?.price?.id;
+
+        console.log("🔥 priceId:", priceId);
+
+        if (!priceId) {
+          console.log("❌ No priceId found");
+          break;
+        }
+
+        // ✅ map plan
+        let plan = null;
+
+        for (const key in PRICE_MAP) {
+          for (const cycle in PRICE_MAP[key]) {
+            if (PRICE_MAP[key][cycle] === priceId) {
+              plan = key;
+            }
+          }
+        }
+
+        console.log("🔥 mapped plan:", plan);
+
+        if (!plan) {
+          console.log("❌ Plan not matched");
+          break;
+        }
+
+        // ✅ SAFE period end (now guaranteed from retrieve)
+        const periodEnd = sub.current_period_end;
+
+        if (!periodEnd) {
+          console.log("❌ Still no period end, skipping safely");
+          break;
+        }
+
+        const expiryDate = new Date(periodEnd * 1000);
+
+        // ✅ check if already exists (idempotent)
+        const existing = user.entitlements.find(
+          (e) => e.stripeSubscriptionId === subscriptionId,
         );
+
+        if (existing) {
+          existing.expiresAt = expiryDate;
+          existing.plan = plan; // 🔁 keep plan synced
+          console.log("🔄 entitlement updated");
+        } else {
+          user.entitlements.push({
+            plan,
+            stripeSubscriptionId: subscriptionId,
+            expiresAt: expiryDate,
+          });
+          console.log("✅ entitlement created");
+        }
+
+        await user.save();
+        console.log("✅ user saved");
+      } catch (err) {
+        console.error("🔥 FULL ERROR:", err);
       }
 
-      await user.save();
       break;
     }
 
+    // =========================================================
+    // ❌ PAYMENT FAILED
+    // =========================================================
+    case "invoice.payment_failed": {
+      try {
+        console.log("❌ payment_failed triggered");
+
+        const invoice = event.data.object;
+        const customerId = invoice.customer;
+
+        const subscriptionId =
+          invoice.subscription ||
+          invoice.lines?.data?.[0]?.subscription ||
+          null;
+
+        console.log("subscriptionId:", subscriptionId);
+
+        if (!subscriptionId) {
+          console.log("❌ Missing subscriptionId");
+          break;
+        }
+
+        const user = await User.findOne({
+          "subscription.stripeCustomerId": customerId,
+        });
+
+        if (!user) {
+          console.log("❌ User not found");
+          break;
+        }
+
+        user.entitlements = user.entitlements.filter(
+          (e) => e.stripeSubscriptionId !== subscriptionId,
+        );
+
+        await user.save();
+        console.log("🗑 entitlement removed");
+      } catch (err) {
+        console.error("🔥 FULL ERROR:", err);
+      }
+
+      break;
+    }
+
+    // =========================================================
+    // ❌ SUBSCRIPTION DELETED
+    // =========================================================
     case "customer.subscription.deleted": {
-      const sub = event.data.object;
+      try {
+        console.log("❌ subscription.deleted triggered");
 
-      const user = await User.findOne({
-        "subscription.stripeSubscriptionId": sub.id,
-      });
+        const sub = event.data.object;
 
-      if (!user) break;
+        const user = await User.findOne({
+          "entitlements.stripeSubscriptionId": sub.id,
+        });
 
-      user.subscription.status = "canceled";
+        if (!user) {
+          console.log("❌ User not found");
+          break;
+        }
 
-      // ❌ OPTIONAL: remove plan when canceled
-      user.activePlans = user.activePlans.filter(
-        (p) => p.plan !== user.subscription.plan
-      );
+        user.entitlements = user.entitlements.filter(
+          (e) => e.stripeSubscriptionId !== sub.id,
+        );
 
-      await user.save();
+        await user.save();
+        console.log("🗑 entitlement removed");
+      } catch (err) {
+        console.error("🔥 FULL ERROR:", err);
+      }
+
       break;
     }
 
@@ -260,39 +300,35 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
 
   res.json({ received: true });
 });
-
-/**
- * @desc Cancel Subscription
- */
+// ==============================
+// CANCEL SUBSCRIPTION
+// ==============================
 exports.cancelSubscription = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user.id);
+  const { subscriptionId } = req.body;
 
-  if (!user?.subscription?.stripeSubscriptionId) {
-    return res.status(400).json({ message: "No active subscription" });
+  if (!subscriptionId) {
+    return res.status(400).json({ message: "Subscription ID required" });
   }
 
-  await stripe.subscriptions.update(user.subscription.stripeSubscriptionId, {
+  await stripe.subscriptions.update(subscriptionId, {
     cancel_at_period_end: true,
   });
-
-  user.subscription.status = "canceled";
-  await user.save();
 
   res.json({ message: "Subscription will cancel at period end" });
 });
 
-/**
- * @desc Create Billing Portal Session
- */
+// ==============================
+// BILLING PORTAL
+// ==============================
 exports.createBillingPortal = asyncHandler(async (req, res) => {
-  const { customerId } = req.body;
+  const user = await User.findById(req.user.id);
 
-  if (!customerId) {
-    return res.status(400).json({ message: "Customer ID required" });
+  if (!user?.subscription?.stripeCustomerId) {
+    return res.status(400).json({ message: "No customer found" });
   }
 
   const session = await stripe.billingPortal.sessions.create({
-    customer: customerId,
+    customer: user.subscription.stripeCustomerId,
     return_url: process.env.CLIENT_URL,
   });
 
