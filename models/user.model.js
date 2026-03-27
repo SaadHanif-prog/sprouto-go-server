@@ -95,6 +95,23 @@ const userSchema = new mongoose.Schema(
         type: Date,
       },
     },
+
+    activePlans: [
+      {
+        plan: {
+          type: String,
+          enum: ["starter", "pro"],
+          required: true,
+        },
+        sitesLimit: {
+          type: Number,
+          required: true,
+        },
+        expiresAt: {
+          type: Date,
+        },
+      },
+    ],
   },
   { timestamps: true },
 );

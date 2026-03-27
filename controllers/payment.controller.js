@@ -144,6 +144,12 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // ✅ plan → sites mapping
+  const planLimits = {
+    starter: 1,
+    pro: 3,
+  };
+
   switch (event.type) {
     case "invoice.payment_succeeded": {
       const invoice = event.data.object;
@@ -165,6 +171,17 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
         user.subscription.currentPeriodEnd = new Date(periodEnd * 1000);
       }
 
+      // ✅ ADD TO activePlans
+      const currentPlan = user.subscription.plan;
+
+      if (currentPlan && planLimits[currentPlan]) {
+        user.activePlans.push({
+          plan: currentPlan,
+          sitesLimit: planLimits[currentPlan],
+          expiresAt: user.subscription.currentPeriodEnd || null,
+        });
+      }
+
       await user.save();
       break;
     }
@@ -180,6 +197,12 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
       if (!user) break;
 
       user.subscription.status = "inactive";
+
+      // ❌ OPTIONAL: remove plan on failure
+      user.activePlans = user.activePlans.filter(
+        (p) => p.plan !== user.subscription.plan
+      );
+
       await user.save();
       break;
     }
@@ -221,6 +244,12 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
       if (!user) break;
 
       user.subscription.status = "canceled";
+
+      // ❌ OPTIONAL: remove plan when canceled
+      user.activePlans = user.activePlans.filter(
+        (p) => p.plan !== user.subscription.plan
+      );
+
       await user.save();
       break;
     }
