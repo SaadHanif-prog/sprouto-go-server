@@ -10,6 +10,7 @@ const getCorsOptions = require("#config/cors-config");
 
 //Routes
 const router = require("#routes/index.routes");
+const stripeRouter = require("#routes/payment.route")
 
 //Error Handler
 const { handleGeneralErrors } = require("#utils/error-handlers");
@@ -22,6 +23,14 @@ const app = express();
 // Middlewares
 app.use(cors(getCorsOptions()));
 app.use(cookieParser());
+
+// STRIPE WEBHOOK FIRST
+app.use(
+  "/api/v1/stripe",
+  express.raw({ type: "application/json" }),
+  stripeRouter
+);
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 

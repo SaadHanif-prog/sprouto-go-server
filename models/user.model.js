@@ -66,12 +66,33 @@ const userSchema = new mongoose.Schema(
       plan: {
         type: String,
         enum: ["starter", "pro"],
-        required: true,
       },
+
       billingCycle: {
         type: String,
         enum: ["monthly", "annually"],
-        required: true,
+      },
+
+      status: {
+        type: String,
+        enum: ["inactive", "pending", "active", "canceled"],
+        default: "inactive",
+      },
+
+      stripeCustomerId: {
+        type: String,
+      },
+
+      stripeSubscriptionId: {
+        type: String,
+      },
+
+      stripePriceId: {
+        type: String,
+      },
+
+      currentPeriodEnd: {
+        type: Date,
       },
     },
   },
