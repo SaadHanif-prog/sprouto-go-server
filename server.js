@@ -11,6 +11,8 @@ const getCorsOptions = require("#config/cors-config");
 //Routes
 const router = require("#routes/index.routes");
 const stripeRouter = require("#routes/payment.route")
+const initSocket = require("#controllers/socket.controller"); 
+
 
 //Error Handler
 const { handleGeneralErrors } = require("#utils/error-handlers");
@@ -51,9 +53,13 @@ app.use(handleGeneralErrors);
 // Connect database first then run the server
 const startServer = async () => {
   await CONNECT_DATABASE();
-  app.listen(PORT, () => {
+
+  const httpServer = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
+
+  // Attach socket AFTER server starts
+  initSocket(httpServer);
 };
 
 startServer();

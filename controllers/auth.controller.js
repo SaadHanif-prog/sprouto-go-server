@@ -16,7 +16,7 @@ const generateRefreshToken = (user) => {
 
 // Common cookie options
 const cookieOptions = {
-  httpOnly: true,
+  httpOnly: false,
   secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
 };
@@ -186,10 +186,23 @@ const logout = asyncHandler(async (req, res) => {
   });
 });
 
+// ================= GET ALL USERS =================
+const getAllUsers = asyncHandler(async (req, res) => {
+  const users = await UserModel.find().select("-password"); 
+
+  res.status(200).json({
+    success: true,
+    count: users.length,
+    data: users,
+  });
+});
+
+
 module.exports = {
   register,
   login,
   refreshAccessToken,
   logout,
   verifyMe,
+  getAllUsers
 };

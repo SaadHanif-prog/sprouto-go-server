@@ -3,7 +3,9 @@ const router = express.Router();
 
 const authRouter = require("#routes/auth.route");
 const paymentRouter = require("#routes/payment.route");
-const siteRouter = require("#routes/site.route"); // ✅ added
+const siteRouter = require("#routes/site.route");
+const requestRouter = require("#routes/request.route");
+const aiStatsRouter = require("#routes/ai-stats.route");
 
 const authMiddleware = require("#middlewares/auth.middleware");
 
@@ -15,6 +17,8 @@ router.use(authMiddleware);
 
 // Protected routes
 router.use("/subscription", paymentRouter);
-router.use("/sites", siteRouter); // ✅ added
+router.use("/sites", siteRouter);
+router.use("/requests", requestRouter);
+router.use("/ai", aiStatsRouter);
 
 module.exports = router;
