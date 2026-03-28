@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const siteSchema = new mongoose.Schema(
   {
-    // ✅ NEW: Site name
+    //  NEW: Site name
     name: {
       type: String,
       required: true,
@@ -16,15 +16,19 @@ const siteSchema = new mongoose.Schema(
       lowercase: true,
     },
 
-    // ✅ Link to user
+    //  Link to user
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
       index: true,
     },
+    plan: {
+      type: String,
+      required: true,
+      enum: ["starter", "pro"], 
+    },
 
-    // 🔥 NEW: Link site to entitlement (IMPORTANT)
     entitlementId: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
@@ -41,13 +45,13 @@ const siteSchema = new mongoose.Schema(
       trim: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-// ✅ Prevent duplicate sites per user
+//  Prevent duplicate sites per user
 siteSchema.index({ userId: 1, url: 1 }, { unique: true });
 
-// 🔥 Optional: speed up entitlement queries
+// speed up entitlement queries
 siteSchema.index({ entitlementId: 1 });
 
 const Site = mongoose.model("Site", siteSchema);

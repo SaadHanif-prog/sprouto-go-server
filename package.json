@@ -19,7 +19,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon server.js",
-    "seed:admin": "node utils/seed-admin.js"
+    "seed:admin": "node utils/seed-admin.js",
+    "seed:developer": "node utils/seed-developer.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

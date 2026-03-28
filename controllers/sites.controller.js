@@ -9,11 +9,20 @@ const asyncHandler = require("#utils/async-handler");
 exports.getSites = asyncHandler(async (req, res) => {
   const userId = req.user.id;
 
-  const sites = await Site.find({ userId }).sort({ createdAt: -1 });
+  const sites = await Site.find({ userId })
+    .select("name url plan entitlementId createdAt") 
+    .sort({ createdAt: -1 });
+
+  const formatted = sites.map((site) => ({
+    id: site._id,
+    name: site.name,
+    url: site.url,
+    plan: site.plan,
+  }));
 
   res.json({
     success: true,
-    data: sites,
+    data: formatted,
   });
 });
 
@@ -38,7 +47,7 @@ exports.createSite = asyncHandler(async (req, res) => {
 
   const now = new Date();
 
-  // ✅ 1. Active entitlements
+  // 1. Active entitlements
   const activeEntitlements = user.entitlements.filter(
     (e) => new Date(e.expiresAt) > now
   );
@@ -49,18 +58,18 @@ exports.createSite = asyncHandler(async (req, res) => {
     });
   }
 
-  // ✅ 2. Plan limits (hardcoded)
+  // 2. Plan limits (hardcoded)
   const PLAN_LIMITS = {
     starter: 1,
     pro: 3,
   };
 
-  // ✅ 3. Calculate total allowed sites
+  // 3. Calculate total allowed sites
   const allowedSites = activeEntitlements.reduce((sum, e) => {
     return sum + (PLAN_LIMITS[e.plan] || 0);
   }, 0);
 
-  // ✅ 4. Count current sites
+  // 4. Count current sites
   const totalSites = await Site.countDocuments({ userId });
 
   if (totalSites >= allowedSites) {
@@ -69,7 +78,7 @@ exports.createSite = asyncHandler(async (req, res) => {
     });
   }
 
-  // ✅ 5. Select entitlement with available space
+  //  5. Select entitlement with available space
   let selectedEntitlement = null;
 
   for (const entitlement of activeEntitlements) {
@@ -91,13 +100,14 @@ exports.createSite = asyncHandler(async (req, res) => {
     });
   }
 
-  // ✅ 6. Create site
+  //  6. Create site
   const site = await Site.create({
-    name,
-    url,
-    userId,
-    entitlementId: selectedEntitlement._id,
-  });
+  name,
+  url,
+  userId,
+  entitlementId: selectedEntitlement._id,
+  plan: selectedEntitlement.plan, // FIX
+});
 
   res.status(201).json({
     success: true,
