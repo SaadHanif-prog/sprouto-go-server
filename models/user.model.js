@@ -82,7 +82,7 @@ const userSchema = new mongoose.Schema(
 
         stripeSubscriptionId: {
           type: String,
-          required: true, // 🔥 must for mapping
+          required: true,
         },
 
         expiresAt: {
@@ -91,8 +91,25 @@ const userSchema = new mongoose.Schema(
         },
       },
     ],
+
+    addonEntitlements: [
+      {
+        addonId: {
+          type: String,
+          required: true,
+        },
+        stripeSubscriptionId: {
+          type: String,
+          required: true,
+        },
+        expiresAt: {
+          type: Date,
+          required: true,
+        },
+      },
+    ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Hash password before save

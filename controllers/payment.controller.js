@@ -17,6 +17,33 @@ const PRICE_MAP = {
   },
 };
 
+const ADDON_PRICE_MAP = {
+  a1: {
+    monthly: process.env.STRIPE_ADDON_A1_MONTHLY,
+    annually: process.env.STRIPE_ADDON_A1_ANNUAL,
+  },
+  a2: {
+    monthly: process.env.STRIPE_ADDON_A2_MONTHLY,
+    annually: process.env.STRIPE_ADDON_A2_ANNUAL,
+  },
+  a3: {
+    monthly: process.env.STRIPE_ADDON_A3_MONTHLY,
+    annually: process.env.STRIPE_ADDON_A3_ANNUAL,
+  },
+};
+
+// Helper to resolve addonId from a priceId
+function resolveAddonId(priceId) {
+  for (const addonId in ADDON_PRICE_MAP) {
+    for (const cycle in ADDON_PRICE_MAP[addonId]) {
+      if (ADDON_PRICE_MAP[addonId][cycle] === priceId) {
+        return addonId;
+      }
+    }
+  }
+  return null;
+}
+
 // ==============================
 // CREATE SUBSCRIPTION
 // ==============================
@@ -102,12 +129,81 @@ exports.createSubscription = asyncHandler(async (req, res) => {
   });
 });
 
+
+
+// ==============================
+// Addon
+// ==============================
+exports.createAddonSubscription = asyncHandler(async (req, res) => {
+  const { addonId, billingCycle } = req.body;
+
+  const allowedAddons = Object.keys(ADDON_PRICE_MAP);
+  const allowedCycles = ["monthly", "annually"];
+
+  if (!allowedAddons.includes(addonId) || !allowedCycles.includes(billingCycle)) {
+    return res.status(400).json({ message: "Invalid addon or billing cycle" });
+  }
+
+  const user = await User.findById(req.user.id);
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  const priceId = ADDON_PRICE_MAP[addonId]?.[billingCycle];
+  if (!priceId) {
+    return res.status(400).json({
+      message: `Price ID not configured for addon ${addonId}/${billingCycle}`,
+    });
+  }
+
+  // Reuse or create Stripe customer (same pattern as plans)
+  let customerId = user.subscription?.stripeCustomerId;
+
+  if (!customerId) {
+    const customer = await stripe.customers.create({ email: user.email });
+    customerId = customer.id;
+    user.subscription = { stripeCustomerId: customerId };
+    await user.save();
+  }
+
+  const subscription = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [{ price: priceId }],
+    payment_behavior: "default_incomplete",
+    collection_method: "charge_automatically",
+    payment_settings: {
+      save_default_payment_method: "on_subscription",
+    },
+    expand: ["latest_invoice.payment_intent"],
+    // Tag it as an addon so the webhook knows what it is
+    metadata: { type: "addon", addonId },
+  });
+
+  const invoiceId =
+    typeof subscription.latest_invoice === "string"
+      ? subscription.latest_invoice
+      : subscription.latest_invoice?.id;
+
+  const invoice = await stripe.invoices.retrieve(invoiceId, {
+    expand: ["payment_intent"],
+  });
+
+  const paymentIntent =
+    typeof invoice.payment_intent === "string"
+      ? await stripe.paymentIntents.retrieve(invoice.payment_intent)
+      : invoice.payment_intent;
+
+  if (!paymentIntent?.client_secret) {
+    return res.status(500).json({ message: "Failed to create payment intent" });
+  }
+
+  res.json({ clientSecret: paymentIntent.client_secret });
+});
+
+
 // ==============================
 // STRIPE WEBHOOK
 // ==============================
 exports.stripeWebhook = asyncHandler(async (req, res) => {
   const sig = req.headers["stripe-signature"];
-
   let event;
 
   try {
@@ -121,26 +217,23 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
   }
 
   switch (event.type) {
-    // =========================================================
-    // ✅ SUBSCRIPTION UPDATED (CREATE + RENEW)
-    // =========================================================
+
     case "customer.subscription.updated": {
       try {
         console.log("✅ subscription.updated triggered");
 
         const rawSub = event.data.object;
-
-        // 🔥 ALWAYS FETCH FULL OBJECT (fixes missing fields issue)
         const sub = await stripe.subscriptions.retrieve(rawSub.id);
 
         const customerId = sub.customer;
         const subscriptionId = sub.id;
+        const isAddon = sub.metadata?.type === "addon";
 
         console.log("customerId:", customerId);
         console.log("subscriptionId:", subscriptionId);
         console.log("status:", sub.status);
+        console.log("isAddon:", isAddon);
 
-        // ✅ Only proceed if active
         if (sub.status !== "active") {
           console.log("⚠️ Subscription not active, skipping");
           break;
@@ -150,147 +243,137 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
           "subscription.stripeCustomerId": customerId,
         });
 
-        if (!user) {
-          console.log("❌ User not found");
-          break;
-        }
+        if (!user) { console.log("❌ User not found"); break; }
 
         const priceId = sub.items?.data?.[0]?.price?.id;
+        if (!priceId) { console.log("❌ No priceId found"); break; }
 
-        console.log("🔥 priceId:", priceId);
+        const periodEnd = sub.current_period_end;
+        if (!periodEnd) { console.log("❌ No period end"); break; }
 
-        if (!priceId) {
-          console.log("❌ No priceId found");
+        const expiresAt = new Date(periodEnd * 1000);
+
+        // ─── ADDON path ───────────────────────────────────────────
+        if (isAddon) {
+          const addonId = sub.metadata.addonId || resolveAddonId(priceId);
+
+          if (!addonId) { console.log("❌ Addon ID not matched"); break; }
+
+          const existing = user.addonEntitlements.find(
+            (e) => e.stripeSubscriptionId === subscriptionId,
+          );
+
+          if (existing) {
+            existing.expiresAt = expiresAt;
+            existing.addonId = addonId;
+            console.log("🔄 addon entitlement updated");
+          } else {
+            user.addonEntitlements.push({ addonId, stripeSubscriptionId: subscriptionId, expiresAt });
+            console.log("✅ addon entitlement created");
+          }
+
+          await user.save();
+          console.log("✅ user saved (addon)");
           break;
         }
 
-        // ✅ map plan
+        // ─── Plan path (your existing logic, untouched) ───────────
         let plan = null;
-
         for (const key in PRICE_MAP) {
           for (const cycle in PRICE_MAP[key]) {
-            if (PRICE_MAP[key][cycle] === priceId) {
-              plan = key;
-            }
+            if (PRICE_MAP[key][cycle] === priceId) plan = key;
           }
         }
 
-        console.log("🔥 mapped plan:", plan);
+        if (!plan) { console.log("❌ Plan not matched"); break; }
 
-        if (!plan) {
-          console.log("❌ Plan not matched");
-          break;
-        }
-
-        // ✅ SAFE period end (now guaranteed from retrieve)
-        const periodEnd = sub.current_period_end;
-
-        if (!periodEnd) {
-          console.log("❌ Still no period end, skipping safely");
-          break;
-        }
-
-        const expiryDate = new Date(periodEnd * 1000);
-
-        // ✅ check if already exists (idempotent)
         const existing = user.entitlements.find(
           (e) => e.stripeSubscriptionId === subscriptionId,
         );
 
         if (existing) {
-          existing.expiresAt = expiryDate;
-          existing.plan = plan; // 🔁 keep plan synced
+          existing.expiresAt = expiresAt;
+          existing.plan = plan;
           console.log("🔄 entitlement updated");
         } else {
-          user.entitlements.push({
-            plan,
-            stripeSubscriptionId: subscriptionId,
-            expiresAt: expiryDate,
-          });
+          user.entitlements.push({ plan, stripeSubscriptionId: subscriptionId, expiresAt });
           console.log("✅ entitlement created");
         }
 
         await user.save();
-        console.log("✅ user saved");
+        console.log("✅ user saved (plan)");
+
       } catch (err) {
         console.error("🔥 FULL ERROR:", err);
       }
-
       break;
     }
 
-    // =========================================================
-    // ❌ PAYMENT FAILED
-    // =========================================================
     case "invoice.payment_failed": {
       try {
         console.log("❌ payment_failed triggered");
 
         const invoice = event.data.object;
         const customerId = invoice.customer;
-
         const subscriptionId =
           invoice.subscription ||
           invoice.lines?.data?.[0]?.subscription ||
           null;
 
-        console.log("subscriptionId:", subscriptionId);
-
-        if (!subscriptionId) {
-          console.log("❌ Missing subscriptionId");
-          break;
-        }
+        if (!subscriptionId) { console.log("❌ Missing subscriptionId"); break; }
 
         const user = await User.findOne({
           "subscription.stripeCustomerId": customerId,
         });
 
-        if (!user) {
-          console.log("❌ User not found");
-          break;
-        }
+        if (!user) { console.log("❌ User not found"); break; }
 
+        // Remove from both arrays — safe, filter won't error if not found
         user.entitlements = user.entitlements.filter(
+          (e) => e.stripeSubscriptionId !== subscriptionId,
+        );
+        user.addonEntitlements = user.addonEntitlements.filter(
           (e) => e.stripeSubscriptionId !== subscriptionId,
         );
 
         await user.save();
-        console.log("🗑 entitlement removed");
+        console.log("🗑 entitlement removed (payment failed)");
+
       } catch (err) {
         console.error("🔥 FULL ERROR:", err);
       }
-
       break;
     }
 
-    // =========================================================
-    // ❌ SUBSCRIPTION DELETED
-    // =========================================================
     case "customer.subscription.deleted": {
       try {
         console.log("❌ subscription.deleted triggered");
 
         const sub = event.data.object;
 
+        // Try plan entitlements first, then addon entitlements
         const user = await User.findOne({
-          "entitlements.stripeSubscriptionId": sub.id,
+          $or: [
+            { "entitlements.stripeSubscriptionId": sub.id },
+            { "addonEntitlements.stripeSubscriptionId": sub.id },
+          ],
         });
 
-        if (!user) {
-          console.log("❌ User not found");
-          break;
-        }
+        if (!user) { console.log("❌ User not found"); break; }
 
         user.entitlements = user.entitlements.filter(
           (e) => e.stripeSubscriptionId !== sub.id,
         );
+        user.addonEntitlements = user.addonEntitlements.filter(
+          (e) => e.stripeSubscriptionId !== sub.id,
+        );
 
         await user.save();
-        console.log("🗑 entitlement removed");
+        console.log("🗑 entitlement removed (deleted)");
+
       } catch (err) {
         console.error("🔥 FULL ERROR:", err);
       }
-
       break;
     }
 
@@ -300,6 +383,7 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
 
   res.json({ received: true });
 });
+
 // ==============================
 // CANCEL SUBSCRIPTION
 // ==============================

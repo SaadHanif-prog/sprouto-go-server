@@ -8,6 +8,7 @@ const requestRouter = require("#routes/request.route");
 const statsRouter = require("#routes/stats.route");
 const targetsRouter = require("#routes/targets.route");
 const auditorRouter = require("#routes/auditor.route");
+const aiRouter = require("#routes/ai-route");
 
 const authMiddleware = require("#middlewares/auth.middleware");
 
@@ -24,5 +25,6 @@ router.use("/requests", requestRouter);
 router.use("/stats", statsRouter);
 router.use("/targets", targetsRouter);
 router.use("/auditor", auditorRouter);
+router.use("/ai", aiRouter);
 
 module.exports = router;
