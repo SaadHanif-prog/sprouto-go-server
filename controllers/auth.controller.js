@@ -66,16 +66,31 @@ const register = asyncHandler(async (req, res) => {
   res.cookie("refreshToken", refreshToken, cookieOptions);
   res.cookie("accessToken", accessToken, cookieOptions);
 
-  return res.status(201).json({
-    success: true,
-    message: "User registered successfully.",
-    data: {
-      id: newUser.id,
-      fullname: `${newUser.firstname} ${newUser.surname}`,
-      email: newUser.email,
-      role: newUser.role,
+ return res.status(201).json({
+  success: true,
+  message: "User registered successfully.",
+  data: {
+    id: newUser._id,
+
+    firstname: newUser.firstname,
+    surname: newUser.surname,
+
+    email: newUser.email,
+    role: newUser.role,
+
+    company: {
+      name: newUser.company?.name,
+      number: newUser.company?.number,
     },
-  });
+
+    address: {
+      line1: newUser.address?.line1,
+      city: newUser.address?.city,
+      county: newUser.address?.county,
+      postcode: newUser.address?.postcode,
+    },
+  },
+});
 });
 
 // ================= LOGIN =================
@@ -111,15 +126,30 @@ const login = asyncHandler(async (req, res) => {
   res.cookie("accessToken", accessToken, cookieOptions);
 
   return res.status(200).json({
-    success: true,
-    message: "Login successful.",
-    data: {
-      id: user.id,
-      fullname: `${user.firstname} ${user.surname}`,
-      email: user.email,
-      role: user.role,
+  success: true,
+  message: "Login successful.",
+  data: {
+    id: user._id, 
+
+    firstname: user.firstname,
+    surname: user.surname,
+
+    email: user.email,
+    role: user.role,
+
+    company: {
+      name: user.company?.name,
+      number: user.company?.number,
     },
-  });
+
+    address: {
+      line1: user.address?.line1,
+      city: user.address?.city,
+      county: user.address?.county,
+      postcode: user.address?.postcode,
+    },
+  },
+});
 });
 
 // ================= REFRESH TOKEN =================
@@ -163,14 +193,40 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 });
 
 // ================= VERIFY ME =================
-const verifyMe = asyncHandler((req, res) => {
+const verifyMe = asyncHandler(async (req, res) => {
+  const userId = req.user.id || req.user._id;
+
+  const user = await UserModel.findById(userId).lean();
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found",
+    });
+  }
+
   res.json({
+    success: true,
     data: {
-      id: req.user.id,
-      email: req.user.email,
-      firstname: req.user.firstname,
-      surname: req.user.surname,
-      role: req.user.role,
+      id: user._id,
+
+      firstname: user.firstname,
+      surname: user.surname,
+
+      email: user.email,
+      role: user.role,
+
+      company: {
+        name: user.company?.name,
+        number: user.company?.number,
+      },
+
+      address: {
+        line1: user.address?.line1,
+        city: user.address?.city,
+        county: user.address?.county,
+        postcode: user.address?.postcode,
+      },
     },
   });
 });
