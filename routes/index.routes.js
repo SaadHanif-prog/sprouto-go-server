@@ -5,7 +5,7 @@ const authRouter = require("#routes/auth.route");
 const paymentRouter = require("#routes/payment.route");
 const siteRouter = require("#routes/site.route");
 const requestRouter = require("#routes/request.route");
-const aiStatsRouter = require("#routes/ai-stats.route");
+const statsRouter = require("#routes/stats.route");
 
 const authMiddleware = require("#middlewares/auth.middleware");
 
@@ -19,6 +19,6 @@ router.use(authMiddleware);
 router.use("/subscription", paymentRouter);
 router.use("/sites", siteRouter);
 router.use("/requests", requestRouter);
-router.use("/ai", aiStatsRouter);
+router.use("/stats", statsRouter);
 
 module.exports = router;

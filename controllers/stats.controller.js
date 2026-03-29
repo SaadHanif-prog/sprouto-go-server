@@ -18,7 +18,7 @@ exports.getAiStats = asyncHandler(async (req, res) => {
     });
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `
 You are an expert SEO and web analytics AI. Analyse the following website URL and return realistic, data-driven statistics for a client-facing dashboard.
