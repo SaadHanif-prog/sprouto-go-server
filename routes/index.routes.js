@@ -6,6 +6,8 @@ const paymentRouter = require("#routes/payment.route");
 const siteRouter = require("#routes/site.route");
 const requestRouter = require("#routes/request.route");
 const statsRouter = require("#routes/stats.route");
+const targetsRouter = require("#routes/targets.route");
+const auditorRouter = require("#routes/auditor.route");
 
 const authMiddleware = require("#middlewares/auth.middleware");
 
@@ -20,5 +22,7 @@ router.use("/subscription", paymentRouter);
 router.use("/sites", siteRouter);
 router.use("/requests", requestRouter);
 router.use("/stats", statsRouter);
+router.use("/targets", targetsRouter);
+router.use("/auditor", auditorRouter);
 
 module.exports = router;
