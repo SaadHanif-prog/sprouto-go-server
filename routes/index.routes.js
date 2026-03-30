@@ -9,16 +9,17 @@ const statsRouter = require("#routes/stats.route");
 const targetsRouter = require("#routes/targets.route");
 const auditorRouter = require("#routes/auditor.route");
 const aiRouter = require("#routes/ai-route");
+const sproutoAIRouter = require("#routes/sprouto-ai.route");
 
 const authMiddleware = require("#middlewares/auth.middleware");
 
-// Public routes
+// ================= PUBLIC ROUTES =================
 router.use("/auth", authRouter);
 
-// Protect all routes below
+// ================= PROTECTED ROUTES =================
 router.use(authMiddleware);
 
-// Protected routes
+// Core platform
 router.use("/subscription", paymentRouter);
 router.use("/sites", siteRouter);
 router.use("/requests", requestRouter);
@@ -26,5 +27,6 @@ router.use("/stats", statsRouter);
 router.use("/targets", targetsRouter);
 router.use("/auditor", auditorRouter);
 router.use("/ai", aiRouter);
+router.use("/sproutoai", sproutoAIRouter);
 
 module.exports = router;
