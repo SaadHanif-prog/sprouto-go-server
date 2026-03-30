@@ -3,6 +3,7 @@ module.exports = getCorsOptions = () => {
     origin: (origin, callback) => {
       const allowedOrigins = [
         "http://localhost:5173",
+        "https://sproutogo-client.vercel.app"
       ];
 
       if (!origin || allowedOrigins.includes(origin)) {
