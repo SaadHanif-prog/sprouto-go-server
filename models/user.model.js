@@ -36,6 +36,14 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
+    resetPasswordToken: {
+      type: String,
+    },
+
+    resetPasswordExpire: {
+      type: Date,
+    },
+
     company: {
       name: {
         type: String,
@@ -108,6 +116,14 @@ const userSchema = new mongoose.Schema(
         },
       },
     ],
+
+    googleTokens: {
+      access_token: String,
+      refresh_token: String,
+      scope: String,
+      token_type: String,
+      expiry_date: Number,
+    },
   },
   { timestamps: true },
 );

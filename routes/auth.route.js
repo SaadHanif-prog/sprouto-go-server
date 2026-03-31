@@ -8,7 +8,9 @@ const {
   logout,
   refreshAccessToken,
   verifyMe,
-  getAllUsers, 
+  getAllUsers,
+  forgotPassword,
+  resetPassword,
 } = require("#controllers/auth.controller");
 
 // Validators
@@ -30,7 +32,11 @@ router.post("/logout", logout);
 router.post("/refresh-access-token", refreshAccessToken);
 router.get("/verify-me", authMiddleware, verifyMe);
 
+// ================= PASSWORD RESET =================
+router.post("/forgot-password", forgotPassword);   
+router.post("/reset-password/:token", resetPassword);      
+
 // ================= USERS =================
-router.get("/users", authMiddleware, getAllUsers); 
+router.get("/users", authMiddleware, getAllUsers);
 
 module.exports = router;

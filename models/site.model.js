@@ -26,7 +26,7 @@ const siteSchema = new mongoose.Schema(
     plan: {
       type: String,
       required: true,
-      enum: ["starter", "pro"], 
+      enum: ["starter", "pro"],
     },
 
     entitlementId: {
@@ -43,6 +43,11 @@ const siteSchema = new mongoose.Schema(
     gaMeasurementId: {
       type: String,
       trim: true,
+    },
+
+    gaPropertyId: {
+      type: String,
+      required: true,
     },
   },
   { timestamps: true },

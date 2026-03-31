@@ -1,12 +1,15 @@
 const Request = require("#models/request.model");
 const Site = require("#models/site.model");
-const User = require("#models/user.model"); // ✅ NEW
+const User = require("#models/user.model"); 
 const asyncHandler = require("#utils/async-handler");
+const {clientChangeRequestEmail} = require("#utils/email templates/change-request");
+const { getResend } = require("#utils/resend");
 
 /**
  * @desc Get requests (Admin: all, Client: by site)
  * @route GET /api/requests
  */
+
 exports.getRequests = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const userRole = req.user.role;
@@ -60,6 +63,44 @@ exports.getRequests = asyncHandler(async (req, res) => {
  * @desc Create new request
  * @route POST /api/requests
  */
+
+// exports.createRequest = asyncHandler(async (req, res) => {
+//   const userId = req.user.id;
+//   const { siteId, title, description, priority } = req.body;
+
+//   if (!siteId || !title || !description || !priority) {
+//     return res.status(400).json({
+//       success: false,
+//       message: "All fields are required",
+//     });
+//   }
+
+//   const site = await Site.findOne({ _id: siteId, userId });
+
+//   if (!site) {
+//     return res.status(404).json({
+//       success: false,
+//       message: "Site not found",
+//     });
+//   }
+
+//   const request = await Request.create({
+//     siteId,
+//     userId,
+//     title,
+//     description,
+//     priority,
+//     status: "pending",
+//   });
+
+//   res.status(201).json({
+//     success: true,
+//     data: request,
+//   });
+// });
+
+
+
 exports.createRequest = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const { siteId, title, description, priority } = req.body;
@@ -68,6 +109,15 @@ exports.createRequest = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "All fields are required",
+    });
+  }
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found",
     });
   }
 
@@ -80,6 +130,7 @@ exports.createRequest = asyncHandler(async (req, res) => {
     });
   }
 
+  // 1. Create request
   const request = await Request.create({
     siteId,
     userId,
@@ -89,6 +140,36 @@ exports.createRequest = asyncHandler(async (req, res) => {
     status: "pending",
   });
 
+  // 2. Send email to admin
+  const resend = getResend();
+
+  if (resend && process.env.RESEND_FROM_EMAIL) {
+    try {
+      const html = clientChangeRequestEmail({
+        username: user.firstname || "User",
+        siteName: site.name,
+        requestDetails: `
+          <b>Title:</b> ${title}<br/>
+          <b>Priority:</b> ${priority}<br/><br/>
+          ${description}
+        `,
+      });
+
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL,
+        to: process.env.ADMIN_EMAIL, 
+        subject: `New Change Request - ${site.name}`,
+        html,
+      });
+    } catch (err) {
+      console.error("Change request email failed:", {
+        message: err.message,
+        stack: err.stack,
+      });
+    }
+  }
+
+  // 3. Response
   res.status(201).json({
     success: true,
     data: request,
