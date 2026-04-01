@@ -65,6 +65,11 @@ Rules:
  * @desc    Chat with the SEO assistant — client sends full message history + current audit data
  * @route   POST /api/auditor/chat
  * @access  Private
+ *
+ * FIX: Gemini requires the first history entry to have role "user".
+ *      The frontend seeds the conversation with an initial model greeting — we strip
+ *      all leading model messages before building the history array, and also strip
+ *      the synthetic greeting so it never reaches Gemini.
  */
 exports.chat = asyncHandler(async (req, res) => {
   const { url, siteName, messages, auditContext } = req.body;
@@ -95,13 +100,22 @@ Respond in a friendly, conversational, human-like manner. Use clear paragraphs a
 
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction });
 
-  const history = messages.slice(0, -1).map((m) => ({
-    role: m.role,
-    parts: [{ text: m.content }],
-  }));
-
+  // ── Drop the last message (that's the one we'll send via sendMessage) ──
+  const allButLast = messages.slice(0, -1);
   const lastMessage = messages[messages.length - 1];
-  const chat = model.startChat({ history });
+
+  // ── Strip any leading model messages so history always starts with "user" ──
+  // This handles the synthetic greeting injected by the frontend on initialisation.
+  const firstUserIndex = allButLast.findIndex((m) => m.role === "user");
+  const safeHistory =
+    firstUserIndex === -1
+      ? [] // no user messages yet → empty history, just send the prompt
+      : allButLast.slice(firstUserIndex).map((m) => ({
+          role: m.role,
+          parts: [{ text: m.content }],
+        }));
+
+  const chat = model.startChat({ history: safeHistory });
   const result = await chat.sendMessage(lastMessage.content);
 
   return res.status(200).json({ success: true, data: { reply: result.response.text() } });

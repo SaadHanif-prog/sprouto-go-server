@@ -5,11 +5,9 @@ const {
   createSubscription,
   cancelSubscription,
   createBillingPortal,
-  stripeWebhook,
   createAddonSubscription,
 } = require("#controllers/payment.controller");
 
-router.post("/webhook", stripeWebhook);
 
 const authMiddleware = require("#middlewares/auth.middleware");
 

@@ -4,7 +4,6 @@ module.exports = getCorsOptions = () => {
       const allowedOrigins = [
         "https://www.sproutogo.com",
         "http://localhost:5173",
-        "https://sprouto-go-client-1.onrender.com"
       ];
 
       if (!origin || allowedOrigins.includes(origin)) {

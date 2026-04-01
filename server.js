@@ -10,7 +10,7 @@ const getCorsOptions = require("#config/cors-config");
 
 //Routes
 const router = require("#routes/index.routes");
-const stripeRouter = require("#routes/payment.route")
+const stripeRouter = require("#routes/webhook.route")
 const initSocket = require("#controllers/socket.controller"); 
 
 
@@ -30,7 +30,7 @@ app.use(cookieParser());
 
 // STRIPE WEBHOOK FIRST
 app.use(
-  "/api/v1/stripe",
+  "/api/v1/webhook",
   express.raw({ type: "application/json" }),
   stripeRouter
 );
