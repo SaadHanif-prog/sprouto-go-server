@@ -223,3 +223,53 @@ exports.createSite = asyncHandler(async (req, res) => {
     data: site,
   });
 });
+
+
+/**
+ * @desc Update site analytics & live URL (Super Admin)
+ * @route PATCH /api/sites/:id/settings
+ */
+exports.updateSiteSettings = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { propertyId, liveUrl } = req.body;
+
+  const site = await Site.findById(id);
+
+  if (!site) {
+    return res.status(404).json({ message: "Site not found" });
+  }
+
+  if (propertyId !== undefined) site.gaPropertyId = propertyId;
+  if (liveUrl !== undefined) site.liveUrl = liveUrl;
+
+  await site.save();
+
+  res.json({
+    success: true,
+    message: "Site settings updated",
+    data: site,
+  });
+});
+
+
+/**
+ * @desc Get ALL sites (Super Admin only)
+ * @route GET /api/sites/all
+ */
+exports.getAllSites = asyncHandler(async (req, res) => {
+  const sites = await Site.find()
+    .select("name url plan userId entitlementId liveUrl gaPropertyId createdAt")
+    .sort({ createdAt: -1 });
+
+  const formatted = sites.map((site) => ({
+    id: site._id,
+    name: site.name,
+    url: site.url,
+    plan: site.plan,
+    userId: site.userId,
+    liveUrl: site.liveUrl || "",
+    propertyId: site.gaPropertyId || "",
+  }));
+
+  res.json({ success: true, data: formatted });
+});

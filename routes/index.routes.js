@@ -10,11 +10,15 @@ const targetsRouter = require("#routes/targets.route");
 const auditorRouter = require("#routes/auditor.route");
 const aiRouter = require("#routes/ai-route");
 const sproutoAIRouter = require("#routes/sprouto-ai.route");
+const googleRouter = require("#routes/stats-new.route");
+const uploadAttachmentRouter = require("#routes/upload.route")
 
 const authMiddleware = require("#middlewares/auth.middleware");
 
 // ================= PUBLIC ROUTES =================
 router.use("/auth", authRouter);
+router.use("/google", googleRouter);
+
 
 // ================= PROTECTED ROUTES =================
 router.use(authMiddleware);
@@ -28,5 +32,9 @@ router.use("/targets", targetsRouter);
 router.use("/auditor", auditorRouter);
 router.use("/ai", aiRouter);
 router.use("/sproutoai", sproutoAIRouter);
+router.use("/upload", uploadAttachmentRouter);
+
+
+
 
 module.exports = router;

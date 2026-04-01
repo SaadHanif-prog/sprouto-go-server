@@ -22,12 +22,13 @@ const messageSchema = new mongoose.Schema(
 
 const attachmentSchema = new mongoose.Schema(
   {
-    name: String,
-    url: String,
-    size: String,
-    type: String,
+    url:           { type: String, required: true },
+    public_id:     { type: String, required: true }, // ← Cloudinary public_id (for deletion)
+    original_name: { type: String },                 // ← original filename
+    mimetype:      { type: String },                 // ← e.g. "image/png", "application/pdf"
+    size:          { type: Number },                 // ← size in bytes
   },
-  { _id: false }
+  { _id: true, timestamps: true }  // ← _id: true so each attachment has its own ID
 );
 
 const requestSchema = new mongoose.Schema(
@@ -38,14 +39,12 @@ const requestSchema = new mongoose.Schema(
       required: true,
     },
 
-    // 👤 CLIENT (who created request)
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
 
-    // 👨‍💻 ASSIGNED DEVELOPER (NEW)
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -75,10 +74,7 @@ const requestSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    // 💬 CHAT SUPPORT
-    messages: [messageSchema],
-
-    // 📎 FILES
+    messages:    [messageSchema],
     attachments: [attachmentSchema],
   },
   { timestamps: true }

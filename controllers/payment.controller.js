@@ -30,6 +30,10 @@ const ADDON_PRICE_MAP = {
     monthly: process.env.STRIPE_ADDON_A3_MONTHLY,
     annually: process.env.STRIPE_ADDON_A3_ANNUAL,
   },
+   a4: {
+    monthly: process.env.STRIPE_ADDON_A4_MONTHLY,
+    annually: process.env.STRIPE_ADDON_A4_ANNUAL,
+  },
 };
 
 // Helper to resolve addonId from a priceId

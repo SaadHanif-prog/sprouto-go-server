@@ -233,6 +233,9 @@ const verifyMe = asyncHandler(async (req, res) => {
         county: user.address?.county,
         postcode: user.address?.postcode,
       },
+
+      addonentitlementid:
+        user.addonEntitlements?.map(a => a.addonId) || [],
     },
   });
 });

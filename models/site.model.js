@@ -47,7 +47,6 @@ const siteSchema = new mongoose.Schema(
 
     gaPropertyId: {
       type: String,
-      required: true,
     },
   },
   { timestamps: true },

@@ -1,12 +1,26 @@
 const Request = require("#models/request.model");
 const Site = require("#models/site.model");
-const User = require("#models/user.model"); 
+const User = require("#models/user.model");
 const asyncHandler = require("#utils/async-handler");
-const {clientChangeRequestEmail} = require("#utils/email templates/change-request");
+const {
+  clientChangeRequestEmail,
+} = require("#utils/email templates/change-request");
 const { getResend } = require("#utils/resend");
+const streamifier = require("streamifier");
+const cloudinary = require("#config/cloudinary");
+
+/* ─── HELPER: upload buffer → Cloudinary ─────────────────────────────────── */
+const uploadToCloudinary = (buffer, mimetype) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "SproutoGo", resource_type: "auto" },
+      (error, result) => (result ? resolve(result) : reject(error)),
+    );
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
 
 /**
- * @desc Get requests (Admin: all, Client: by site)
+ * @desc Get requests (Admin: all, Developer: assigned, Client: by site)
  * @route GET /api/requests
  */
 
@@ -17,32 +31,22 @@ exports.getRequests = asyncHandler(async (req, res) => {
 
   let filter = {};
 
-  // 🟣 ADMIN / SUPERADMIN → ALL requests
   if (userRole === "admin" || userRole === "superadmin") {
     filter = {};
-  }
-
-  // 🟡 DEVELOPER → ONLY assigned requests
-  else if (userRole === "developer") {
+  } else if (userRole === "developer") {
     filter = { assignedTo: userId };
-  }
-
-  // 🔵 CLIENT → MUST provide siteId
-  else {
+  } else {
     if (!siteId) {
-      return res.status(400).json({
-        success: false,
-        message: "siteId is required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "siteId is required" });
     }
 
     const site = await Site.findOne({ _id: siteId, userId });
-
     if (!site) {
-      return res.status(404).json({
-        success: false,
-        message: "Site not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Site not found" });
     }
 
     filter = { siteId };
@@ -50,87 +54,55 @@ exports.getRequests = asyncHandler(async (req, res) => {
 
   const requests = await Request.find(filter)
     .populate("siteId", "name url")
-    .populate("userId", "name email")
-    .populate("assignedTo", "name email")
+    .populate("userId", "firstname surname email")
+    .populate("assignedTo", "firstname surname email")
     .sort({ createdAt: -1 });
 
-  res.json({
-    success: true,
-    data: requests,
-  });
+  res.json({ success: true, data: requests });
 });
+
 /**
- * @desc Create new request
+ * @desc Create new request (with optional file attachment)
  * @route POST /api/requests
  */
-
-// exports.createRequest = asyncHandler(async (req, res) => {
-//   const userId = req.user.id;
-//   const { siteId, title, description, priority } = req.body;
-
-//   if (!siteId || !title || !description || !priority) {
-//     return res.status(400).json({
-//       success: false,
-//       message: "All fields are required",
-//     });
-//   }
-
-//   const site = await Site.findOne({ _id: siteId, userId });
-
-//   if (!site) {
-//     return res.status(404).json({
-//       success: false,
-//       message: "Site not found",
-//     });
-//   }
-
-//   const request = await Request.create({
-//     siteId,
-//     userId,
-//     title,
-//     description,
-//     priority,
-//     status: "pending",
-//   });
-
-//   res.status(201).json({
-//     success: true,
-//     data: request,
-//   });
-// });
-
-
 
 exports.createRequest = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const { siteId, title, description, priority } = req.body;
 
   if (!siteId || !title || !description || !priority) {
-    return res.status(400).json({
-      success: false,
-      message: "All fields are required",
-    });
+    return res
+      .status(400)
+      .json({ success: false, message: "All fields are required" });
   }
 
-  const user = await User.findById(userId);
+  const [user, site] = await Promise.all([
+    User.findById(userId),
+    Site.findOne({ _id: siteId, userId }),
+  ]);
 
-  if (!user) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found",
-    });
+  if (!user)
+    return res.status(404).json({ success: false, message: "User not found" });
+  if (!site)
+    return res.status(404).json({ success: false, message: "Site not found" });
+
+  // ✅ Upload attachment if a file was sent
+  let attachments = [];
+
+  if (req.file) {
+    const result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+
+    attachments = [
+      {
+        url: result.secure_url,
+        public_id: result.public_id,
+        original_name: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      },
+    ];
   }
 
-  const site = await Site.findOne({ _id: siteId, userId });
-
-  if (!site) {
-    return res.status(404).json({
-      success: false,
-      message: "Site not found",
-    });
-  }
-
-  // 1. Create request
   const request = await Request.create({
     siteId,
     userId,
@@ -138,9 +110,9 @@ exports.createRequest = asyncHandler(async (req, res) => {
     description,
     priority,
     status: "pending",
+    attachments, 
   });
 
-  // 2. Send email to admin
   const resend = getResend();
 
   if (resend && process.env.RESEND_FROM_EMAIL) {
@@ -148,32 +120,29 @@ exports.createRequest = asyncHandler(async (req, res) => {
       const html = clientChangeRequestEmail({
         username: user.firstname || "User",
         siteName: site.name,
+        siteUrl: site.url,
         requestDetails: `
+          <b>Site:</b> ${site.name}<br/>
+          <b>URL:</b> <a href="${site.url}" target="_blank">${site.url}</a><br/><br/>
           <b>Title:</b> ${title}<br/>
           <b>Priority:</b> ${priority}<br/><br/>
           ${description}
+          ${attachments.length ? `<br/><br/><b>Attachment:</b> <a href="${attachments[0].url}">${attachments[0].original_name}</a>` : ""}
         `,
       });
 
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
-        to: process.env.ADMIN_EMAIL, 
-        subject: `New Change Request - ${site.name}`,
+        to: process.env.ADMIN_EMAIL,
+        subject: `New Change Request - ${site.name} (${site.url})`,
         html,
       });
     } catch (err) {
-      console.error("Change request email failed:", {
-        message: err.message,
-        stack: err.stack,
-      });
+      console.error("Change request email failed:", err.message);
     }
   }
 
-  // 3. Response
-  res.status(201).json({
-    success: true,
-    data: request,
-  });
+  res.status(201).json({ success: true, data: request });
 });
 
 /**
@@ -185,39 +154,21 @@ exports.updateRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const request = await Request.findById(id);
+  if (!request)
+    return res
+      .status(404)
+      .json({ success: false, message: "Request not found" });
 
-  if (!request) {
-    return res.status(404).json({
-      success: false,
-      message: "Request not found",
-    });
-  }
+  const site = await Site.findOne({ _id: request.siteId, userId });
+  if (!site)
+    return res.status(403).json({ success: false, message: "Unauthorized" });
 
-  const site = await Site.findOne({
-    _id: request.siteId,
-    userId,
-  });
-
-  if (!site) {
-    return res.status(403).json({
-      success: false,
-      message: "Unauthorized",
-    });
-  }
-
-  const allowedUpdates = ["title", "description", "priority"];
-  allowedUpdates.forEach((field) => {
-    if (req.body[field] !== undefined) {
-      request[field] = req.body[field];
-    }
+  ["title", "description", "priority"].forEach((field) => {
+    if (req.body[field] !== undefined) request[field] = req.body[field];
   });
 
   await request.save();
-
-  res.json({
-    success: true,
-    data: request,
-  });
+  res.json({ success: true, data: request });
 });
 
 /**
@@ -229,52 +180,40 @@ exports.assignRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { developerId } = req.body;
 
-  // 🔒 Only admin allowed
   if (userRole !== "admin" && userRole !== "superadmin") {
-    return res.status(403).json({
-      success: false,
-      message: "Only admin can assign requests",
-    });
+    return res
+      .status(403)
+      .json({ success: false, message: "Only admin can assign requests" });
   }
 
   if (!developerId) {
-    return res.status(400).json({
-      success: false,
-      message: "developerId is required",
-    });
+    return res
+      .status(400)
+      .json({ success: false, message: "developerId is required" });
   }
 
   const request = await Request.findById(id);
+  if (!request)
+    return res
+      .status(404)
+      .json({ success: false, message: "Request not found" });
 
-  if (!request) {
-    return res.status(404).json({
-      success: false,
-      message: "Request not found",
-    });
-  }
-
-  // ✅ Validate developer
   const developer = await User.findById(developerId);
-
   if (!developer || developer.role !== "developer") {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid developer",
-    });
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid developer" });
   }
 
   request.assignedTo = developerId;
-  request.status = "in-progress"; // 🔥 auto move status
-
+  request.status = "in-progress";
   await request.save();
 
-  const updated = await Request.findById(id)
-    .populate("assignedTo", "name email");
-
-  res.json({
-    success: true,
-    data: updated,
-  });
+  const updated = await Request.findById(id).populate(
+    "assignedTo",
+    "firstname surname email",
+  );
+  res.json({ success: true, data: updated });
 });
 
 /**
@@ -286,30 +225,15 @@ exports.deleteRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const request = await Request.findById(id);
+  if (!request)
+    return res
+      .status(404)
+      .json({ success: false, message: "Request not found" });
 
-  if (!request) {
-    return res.status(404).json({
-      success: false,
-      message: "Request not found",
-    });
-  }
-
-  const site = await Site.findOne({
-    _id: request.siteId,
-    userId,
-  });
-
-  if (!site) {
-    return res.status(403).json({
-      success: false,
-      message: "Unauthorized",
-    });
-  }
+  const site = await Site.findOne({ _id: request.siteId, userId });
+  if (!site)
+    return res.status(403).json({ success: false, message: "Unauthorized" });
 
   await request.deleteOne();
-
-  res.json({
-    success: true,
-    message: "Request deleted successfully",
-  });
+  res.json({ success: true, message: "Request deleted successfully" });
 });
