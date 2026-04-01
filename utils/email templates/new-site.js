@@ -38,7 +38,7 @@ module.exports.newSiteCreatedEmail = function ({
       </div>
 
       <p style="margin-top:22px;color:#475569;font-size:12px;text-align:center;">
-        © 2025 Your Company. All rights reserved.
+        © 2026 Sprouto Go. All rights reserved.
       </p>
     </div>
   </div>
