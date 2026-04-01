@@ -21,9 +21,6 @@ const { handleGeneralErrors } = require("#utils/error-handlers");
 
 /*********************************************** Imports On Top ***********************************************/
 
-
-console.log("URLLLLLLLLLLLL", process.env.GOOGLE_REDIRECT_URI)
-
 const PORT = process.env.PORT || 5000;
 const app = express();
 
