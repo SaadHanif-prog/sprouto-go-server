@@ -25,9 +25,8 @@ const SCOPES = [
 // =========================
 // CONNECT GOOGLE
 // =========================
-exports.connectGoogle = asyncHandler(async (req, res) => {
-  console.log("➡️ Redirecting user to Google OAuth");
 
+exports.connectGoogle = asyncHandler(async (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
@@ -35,8 +34,9 @@ exports.connectGoogle = asyncHandler(async (req, res) => {
     state: req.user.id,
   });
 
-  return res.redirect(url);
+  return res.json({ url });
 });
+
 
 // =========================
 // CALLBACK
