@@ -4,7 +4,6 @@ const { google } = require("googleapis");
 const Site = require("#models/site.model");
 const User = require("#models/user.model");
 
-console.log("URLLLLLLLLLLLL", process.env.GOOGLE_REDIRECT_URI)
 
 // =========================
 // OAUTH CONFIG

@@ -2,14 +2,16 @@ const jwt = require("jsonwebtoken");
 const asyncHandler = require("#utils/async-handler");
 const UserModel = require("#models/user.model");
 const crypto = require("crypto");
+const { clientWelcomeEmail, adminNewUserEmail } = require("#utils/email templates/signup");
 
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 
-const { getResend } = require("#utils/resend");
 const {
   forgotPasswordEmail,
 } = require("#utils/email templates/forgot-password");
+const { getResend } = require("#utils/resend");
+
 
 // Helpers
 const generateAccessToken = (user) => {
@@ -28,6 +30,83 @@ const cookieOptions = {
 };
 
 // ================= REGISTER =================
+// const register = asyncHandler(async (req, res) => {
+//   const {
+//     title,
+//     firstname,
+//     surname,
+//     email,
+//     password,
+//     company,
+//     address,
+//     subscription,
+//   } = req.body;
+
+//   const existingUser = await UserModel.findOne({ email });
+//   if (existingUser) {
+//     const error = new Error("User already exists.");
+//     error.status = 400;
+//     throw error;
+//   }
+
+//   const newUser = await UserModel.create({
+//     title,
+//     firstname,
+//     surname,
+//     email,
+//     password,
+//     company,
+//     address,
+//     subscription,
+//   });
+
+//   const payload = {
+//     id: newUser.id,
+//     email: newUser.email,
+//     firstname: newUser.firstname,
+//     surname: newUser.surname,
+//     role: newUser.role,
+//   };
+
+//   const accessToken = generateAccessToken(payload);
+//   const refreshToken = generateRefreshToken(payload);
+
+//   res.cookie("refreshToken", refreshToken, cookieOptions);
+//   res.cookie("accessToken", accessToken, cookieOptions);
+
+//   return res.status(201).json({
+//     success: true,
+//     message: "User registered successfully.",
+//     data: {
+//       id: newUser._id,
+
+//       firstname: newUser.firstname,
+//       surname: newUser.surname,
+
+//       email: newUser.email,
+//       role: newUser.role,
+
+//       company: {
+//         name: newUser.company?.name,
+//         number: newUser.company?.number,
+//       },
+
+//       address: {
+//         line1: newUser.address?.line1,
+//         city: newUser.address?.city,
+//         county: newUser.address?.county,
+//         postcode: newUser.address?.postcode,
+//       },
+//     },
+//   });
+// });
+
+// Add these imports at the top of your auth controller alongside existing imports:
+//
+//   const { getResend } = require("../utils/resend");
+//   const { clientWelcomeEmail } = require("../emails/clientWelcomeEmail");
+//   const { adminNewUserEmail }   = require("../emails/adminNewUserEmail");
+
 const register = asyncHandler(async (req, res) => {
   const {
     title,
@@ -57,6 +136,44 @@ const register = asyncHandler(async (req, res) => {
     address,
     subscription,
   });
+
+  // ─── Emails ───────────────────────────────────────────────────────────────
+  const resend = getResend();
+
+  if (resend && process.env.RESEND_FROM_EMAIL) {
+    try {
+      // Welcome email → new client
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL,
+        to: newUser.email,
+        subject: "Welcome to Sprouto Go 🚀",
+        html: clientWelcomeEmail({
+          firstname: newUser.firstname,
+          surname: newUser.surname,
+          email: newUser.email,
+          company: newUser.company,
+        }),
+      });
+
+      // Notification email → admin
+      if (process.env.ADMIN_EMAIL) {
+        await resend.emails.send({
+          from: process.env.RESEND_FROM_EMAIL,
+          to: process.env.ADMIN_EMAIL,
+          subject: `New Client Registered - ${newUser.firstname} ${newUser.surname}`,
+          html: adminNewUserEmail({
+            firstname: newUser.firstname,
+            surname: newUser.surname,
+            email: newUser.email,
+            company: newUser.company,
+            address: newUser.address,
+          }),
+        });
+      }
+    } catch (emailErr) {
+      console.error("🔥 Registration email error:", emailErr);
+    }
+  }
 
   const payload = {
     id: newUser.id,
@@ -98,7 +215,6 @@ const register = asyncHandler(async (req, res) => {
     },
   });
 });
-
 // ================= LOGIN =================
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
