@@ -220,8 +220,6 @@ const register = asyncHandler(async (req, res) => {
 });
 // ================= LOGIN =================
 const login = asyncHandler(async (req, res) => {
-  console.log("NODE_ENV:", process.env.NODE_ENV);
-console.log("Cookie options:", cookieOptions);
   const { email, password } = req.body;
 
   const user = await UserModel.findOne({ email });
