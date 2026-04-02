@@ -29,6 +29,9 @@ const cookieOptions = {
   sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
 };
 
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("Cookie options:", cookieOptions);
+
 // ================= REGISTER =================
 // const register = asyncHandler(async (req, res) => {
 //   const {
