@@ -24,7 +24,7 @@ const generateRefreshToken = (user) => {
 
 // Common cookie options
 const cookieOptions = {
-  httpOnly: false,
+  httpOnly: process.env.NODE_ENV === "production",
   secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
 };
@@ -193,6 +193,7 @@ const register = asyncHandler(async (req, res) => {
     success: true,
     message: "User registered successfully.",
     data: {
+      accessToken,
       id: newUser._id,
 
       firstname: newUser.firstname,
@@ -251,6 +252,7 @@ const login = asyncHandler(async (req, res) => {
     success: true,
     message: "Login successful.",
     data: {
+      accessToken,
       id: user._id,
 
       firstname: user.firstname,
@@ -327,14 +329,16 @@ const verifyMe = asyncHandler(async (req, res) => {
     });
   }
 
+  const accessToken = req.cookies.accessToken;
+
   res.json({
     success: true,
     data: {
-      id: user._id,
+      accessToken,
 
+      id: user._id,
       firstname: user.firstname,
       surname: user.surname,
-
       email: user.email,
       role: user.role,
 
