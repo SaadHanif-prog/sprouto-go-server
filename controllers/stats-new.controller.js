@@ -98,9 +98,6 @@ exports.getAiStats = asyncHandler(async (req, res) => {
   const site = await Site.findById(siteId);
   const user = await User.findById(req.user.id);
 
-  console.log("📊 SITE:", site);
-  console.log("👤 TOKENS:", user?.googleTokens);
-
   if (!site || !user?.googleTokens) {
     return res.status(400).json({
       success: false,
@@ -109,69 +106,104 @@ exports.getAiStats = asyncHandler(async (req, res) => {
   }
 
   // =========================
-  // AUTH SETUP
+  // AUTH
   // =========================
   oauth2Client.setCredentials(user.googleTokens);
 
-  const accessToken = await oauth2Client.getAccessToken();
-  console.log("🔑 Access Token:", accessToken?.token);
-
-  // =========================
-  // INIT APIs (REST)
-  // =========================
   const analyticsData = google.analyticsdata("v1beta");
-
   const searchconsole = google.searchconsole({
     version: "v1",
     auth: oauth2Client,
   });
 
-  const { startDate, endDate } = getDateRange();
-
-  console.log("📅 Date range:", { startDate, endDate });
-  console.log("📌 GA Property ID:", site.gaPropertyId);
   if (!site.gaPropertyId) {
-    return res
-      .status(404)
-      .json({ success: false, message: "GA property id is missing" });
+    return res.status(404).json({
+      success: false,
+      message: "GA property id is missing",
+    });
   }
 
   // =========================
-  // GA: OVERVIEW
+  // DATE HELPERS (GSC ONLY)
   // =========================
-  let uniqueVisitors = 0;
+  const formatDate = (date) => date.toISOString().split("T")[0];
+
+  const getDateRanges = () => {
+    const today = new Date();
+
+    const currentStart = new Date();
+    currentStart.setDate(today.getDate() - 7);
+
+    const prevStart = new Date();
+    prevStart.setDate(today.getDate() - 14);
+
+    const prevEnd = new Date();
+    prevEnd.setDate(today.getDate() - 8);
+
+    return {
+      current: {
+        startDate: formatDate(currentStart),
+        endDate: formatDate(today),
+      },
+      previous: {
+        startDate: formatDate(prevStart),
+        endDate: formatDate(prevEnd),
+      },
+    };
+  };
+
+  const { current, previous } = getDateRanges();
+
+  // =========================
+  // HELPER: % CHANGE
+  // =========================
+  const calcChange = (current, previous) => {
+    if (previous === 0) return current > 0 ? "+100%" : "0%";
+
+    const change = ((current - previous) / previous) * 100;
+    const sign = change >= 0 ? "+" : "";
+
+    return `${sign}${change.toFixed(1)}%`;
+  };
+
+  // =========================
+  // GA: CURRENT + PREVIOUS
+  // =========================
+  let currentUsers = 0;
+  let prevUsers = 0;
 
   try {
-    console.log("➡️ Fetching GA overview...");
-
-    const gaOverviewRes = await analyticsData.properties.runReport({
+    const gaRes = await analyticsData.properties.runReport({
       property: `properties/${site.gaPropertyId}`,
       requestBody: {
-        dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
-        metrics: [{ name: "activeUsers" }, { name: "sessions" }],
+        dateRanges: [
+          { startDate: "7daysAgo", endDate: "today" },
+          { startDate: "14daysAgo", endDate: "7daysAgo" },
+        ],
+        metrics: [{ name: "activeUsers" }],
       },
       auth: oauth2Client,
     });
 
-    console.log("✅ GA Overview:", gaOverviewRes.data);
+    currentUsers = Number(
+      gaRes.data.rows?.[0]?.metricValues?.[0]?.value || 0
+    );
 
-    uniqueVisitors = Number(
-      gaOverviewRes.data.rows?.[0]?.metricValues?.[0]?.value || 0,
+    prevUsers = Number(
+      gaRes.data.rows?.[0]?.metricValues?.[1]?.value || 0
     );
   } catch (err) {
-    console.error("❌ GA OVERVIEW ERROR:", err.response?.data || err);
+    console.error("❌ GA ERROR:", err.response?.data || err);
     throw err;
   }
 
   // =========================
-  // GA: CHART
+  // GA: CHART (current only)
   // =========================
   let chartData = [];
 
   try {
-    console.log("➡️ Fetching GA chart...");
-
-    const gaChartRes = await analyticsData.properties.runReport({
+    const chartRes = await analyticsData.properties.runReport({
       property: `properties/${site.gaPropertyId}`,
       requestBody: {
         dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
@@ -181,10 +213,8 @@ exports.getAiStats = asyncHandler(async (req, res) => {
       auth: oauth2Client,
     });
 
-    console.log("✅ GA Chart:", gaChartRes.data);
-
     chartData =
-      gaChartRes.data.rows?.map((row) => ({
+      chartRes.data.rows?.map((row) => ({
         name: row.dimensionValues?.[0]?.value,
         searches: Number(row.metricValues?.[1]?.value || 0),
         clicks: Number(row.metricValues?.[0]?.value || 0),
@@ -195,13 +225,11 @@ exports.getAiStats = asyncHandler(async (req, res) => {
   }
 
   // =========================
-  // GA: GEO
+  // GA: GEO (current only)
   // =========================
   let geoMarkers = [];
 
   try {
-    console.log("➡️ Fetching GA geo...");
-
     const geoRes = await analyticsData.properties.runReport({
       property: `properties/${site.gaPropertyId}`,
       requestBody: {
@@ -211,8 +239,6 @@ exports.getAiStats = asyncHandler(async (req, res) => {
       },
       auth: oauth2Client,
     });
-
-    console.log("✅ GA Geo:", geoRes.data);
 
     geoMarkers =
       geoRes.data.rows?.slice(0, 5).map((row, i) => ({
@@ -227,10 +253,8 @@ exports.getAiStats = asyncHandler(async (req, res) => {
   }
 
   // =========================
-  // GSC DATA
+  // GSC SETUP
   // =========================
-  console.log("➡️ Fetching Search Console...");
-
   const normalizeDomainProperty = (url) => {
     return `sc-domain:${url
       .replace(/^https?:\/\//, "")
@@ -238,30 +262,56 @@ exports.getAiStats = asyncHandler(async (req, res) => {
       .replace(/\/$/, "")}`;
   };
 
-  const gscResponse = await searchconsole.searchanalytics.query({
-    siteUrl: normalizeDomainProperty(site.url),
-    requestBody: {
-      startDate,
-      endDate,
-    },
-  });
-  console.log("✅ GSC:", gscResponse.data);
+  const siteUrl = normalizeDomainProperty(site.url);
 
-  const rows = gscResponse.data.rows || [];
+  // =========================
+  // GSC: CURRENT
+  // =========================
+  let currentClicks = 0;
+  let currentSearches = 0;
 
-  let totalClicks = 0;
-  let totalSearches = 0;
+  try {
+    const currentGSC = await searchconsole.searchanalytics.query({
+      siteUrl,
+      requestBody: current,
+    });
 
-  rows.forEach((r) => {
-    totalClicks += r.clicks || 0;
-    totalSearches += r.impressions || 0;
-  });
+    (currentGSC.data.rows || []).forEach((r) => {
+      currentClicks += r.clicks || 0;
+      currentSearches += r.impressions || 0;
+    });
+  } catch (err) {
+    console.error("❌ GSC CURRENT ERROR:", err.response?.data || err);
+    throw err;
+  }
 
-  console.log("📈 Final:", {
-    totalClicks,
-    totalSearches,
-    uniqueVisitors,
-  });
+  // =========================
+  // GSC: PREVIOUS
+  // =========================
+  let prevClicks = 0;
+  let prevSearches = 0;
+
+  try {
+    const prevGSC = await searchconsole.searchanalytics.query({
+      siteUrl,
+      requestBody: previous,
+    });
+
+    (prevGSC.data.rows || []).forEach((r) => {
+      prevClicks += r.clicks || 0;
+      prevSearches += r.impressions || 0;
+    });
+  } catch (err) {
+    console.error("❌ GSC PREVIOUS ERROR:", err.response?.data || err);
+    throw err;
+  }
+
+  // =========================
+  // CALCULATE CHANGES
+  // =========================
+  const searchChange = calcChange(currentSearches, prevSearches);
+  const clickChange = calcChange(currentClicks, prevClicks);
+  const visitorChange = calcChange(currentUsers, prevUsers);
 
   // =========================
   // RESPONSE
@@ -269,13 +319,13 @@ exports.getAiStats = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     data: {
-      totalSearches,
-      totalClicks,
-      uniqueVisitors,
+      totalSearches: currentSearches,
+      totalClicks: currentClicks,
+      uniqueVisitors: currentUsers,
 
-      searchChange: "+0%",
-      clickChange: "+0%",
-      visitorChange: "+0%",
+      searchChange,
+      clickChange,
+      visitorChange,
 
       chartData,
       geoMarkers,
