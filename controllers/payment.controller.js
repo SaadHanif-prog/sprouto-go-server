@@ -398,6 +398,7 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
 
   // ─── DEBUG LOGS ───────────────────────────────────────────────────────────
   console.log("🔍 [WEBHOOK DEBUG] stripe-signature present:", !!sig);
+  console.log("🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET prefix:", process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + "...");
   console.log("🔍 [WEBHOOK DEBUG] stripe-signature value:", sig);
   console.log("🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET set:", !!process.env.STRIPE_WEBHOOK_SECRET);
   console.log("🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET prefix:", process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + "...");
