@@ -395,6 +395,27 @@ exports.createAddonSubscription = asyncHandler(async (req, res) => {
 exports.stripeWebhook = asyncHandler(async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
+
+  // ─── DEBUG LOGS ───────────────────────────────────────────────────────────
+  console.log("🔍 [WEBHOOK DEBUG] stripe-signature present:", !!sig);
+  console.log("🔍 [WEBHOOK DEBUG] stripe-signature value:", sig);
+  console.log("🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET set:", !!process.env.STRIPE_WEBHOOK_SECRET);
+  console.log("🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET prefix:", process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + "...");
+  console.log("🔍 [WEBHOOK DEBUG] req.body type:", typeof req.body);
+  console.log("🔍 [WEBHOOK DEBUG] req.body is Buffer:", Buffer.isBuffer(req.body));
+  console.log("🔍 [WEBHOOK DEBUG] req.body length:", req.body?.length ?? "N/A");
+  console.log("🔍 [WEBHOOK DEBUG] req.body constructor:", req.body?.constructor?.name);
+
+  if (typeof req.body === "string") {
+    console.log("🔍 [WEBHOOK DEBUG] body is STRING (first 200):", req.body.substring(0, 200));
+  } else if (Buffer.isBuffer(req.body)) {
+    console.log("🔍 [WEBHOOK DEBUG] body is BUFFER (first 200):", req.body.toString("utf8").substring(0, 200));
+  } else if (typeof req.body === "object") {
+    // ⚠️ This means express.json() or bodyParser.json() ran first — raw body is gone
+    console.log("🔍 [WEBHOOK DEBUG] ⚠️  body is a PARSED OBJECT — body-parser destroyed the raw body. This is why Stripe signature fails.");
+    console.log("🔍 [WEBHOOK DEBUG] body (object, first 200):", JSON.stringify(req.body).substring(0, 200));
+  }
+  // ─── END DEBUG LOGS ─────────────────────
  
   try {
     event = stripe.webhooks.constructEvent(
