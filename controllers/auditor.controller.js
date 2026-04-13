@@ -86,6 +86,7 @@ Return ONLY the JSON. No other text whatsoever.
  */
 exports.chat = asyncHandler(async (req, res) => {
   const { url, siteName, messages, auditContext } = req.body;
+  console.log("URL", url, "Site Name", siteName, "Messages", messages, "Audit Context", auditContext)
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res
@@ -95,7 +96,7 @@ exports.chat = asyncHandler(async (req, res) => {
 
   const contextBlock = auditContext
     ? `
-Current SEO Audit Data for ${siteName || url}:
+Current SEO Audit Data for ${url}:
 Health Score: ${auditContext.healthScore}/100
 Organic Traffic: ${auditContext.organicTraffic}k visitors/month
 Critical Issues: ${auditContext.criticalIssues}

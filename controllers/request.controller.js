@@ -27,29 +27,44 @@ const uploadToCloudinary = (buffer, mimetype) =>
 exports.getRequests = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const userRole = req.user.role;
-  const { siteId } = req.query;
+
+  let { siteId } = req.query;
+
+  // sanitize siteId
+  if (siteId === "null" || siteId === "" || siteId === undefined) {
+    siteId = null;
+  }
 
   let filter = {};
 
+  // Admin / Superadmin = all requests
   if (userRole === "admin" || userRole === "superadmin") {
     filter = {};
-  } else if (userRole === "developer") {
+  }
+
+  // Developer = assigned requests
+  else if (userRole === "developer") {
     filter = { assignedTo: userId };
-  } else {
-    if (!siteId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "siteId is required" });
-    }
+  }
 
-    const site = await Site.findOne({ _id: siteId, userId });
-    if (!site) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Site not found" });
-    }
+  // Normal User
+  else {
+    if (siteId) {
+      // validate site belongs to user
+      const site = await Site.findOne({ _id: siteId, userId });
 
-    filter = { siteId };
+      if (!site) {
+        return res.status(404).json({
+          success: false,
+          message: "Site not found",
+        });
+      }
+
+      filter = { siteId, userId };
+    } else {
+      // no siteId = all user's requests
+      filter = { userId };
+    }
   }
 
   const requests = await Request.find(filter)
@@ -58,7 +73,10 @@ exports.getRequests = asyncHandler(async (req, res) => {
     .populate("assignedTo", "firstname surname email")
     .sort({ createdAt: -1 });
 
-  res.json({ success: true, data: requests });
+  res.json({
+    success: true,
+    data: requests,
+  });
 });
 
 /**
@@ -68,29 +86,51 @@ exports.getRequests = asyncHandler(async (req, res) => {
 
 exports.createRequest = asyncHandler(async (req, res) => {
   const userId = req.user.id;
-  const { siteId, title, description, priority } = req.body;
+  let { siteId, title, description, priority } = req.body;
 
-  if (!siteId || !title || !description || !priority) {
-    return res
-      .status(400)
-      .json({ success: false, message: "All fields are required" });
+  if (siteId === "null" || siteId === "" || siteId === undefined) {
+  siteId = null;
+ }
+
+  if (!title || !description || !priority) {
+    return res.status(400).json({
+      success: false,
+      message: "Title, description and priority are required",
+    });
   }
 
-  const [user, site] = await Promise.all([
-    User.findById(userId),
-    Site.findOne({ _id: siteId, userId }),
-  ]);
+  // Get user first
+  const user = await User.findById(userId);
 
-  if (!user)
-    return res.status(404).json({ success: false, message: "User not found" });
-  if (!site)
-    return res.status(404).json({ success: false, message: "Site not found" });
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found",
+    });
+  }
 
-  // ✅ Upload attachment if a file was sent
+  // ✅ Only find site if siteId exists
+  let site = null;
+
+  if (siteId) {
+    site = await Site.findOne({ _id: siteId, userId });
+
+    if (!site) {
+      return res.status(404).json({
+        success: false,
+        message: "Site not found",
+      });
+    }
+  }
+
+  // Upload attachment
   let attachments = [];
 
   if (req.file) {
-    const result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    const result = await uploadToCloudinary(
+      req.file.buffer,
+      req.file.mimetype
+    );
 
     attachments = [
       {
@@ -103,38 +143,57 @@ exports.createRequest = asyncHandler(async (req, res) => {
     ];
   }
 
+  // ✅ Create request
   const request = await Request.create({
-    siteId,
+    siteId: site ? site._id : null,
     userId,
     title,
     description,
     priority,
     status: "pending",
-    attachments, 
+    attachments,
   });
 
+  // Email
   const resend = getResend();
 
   if (resend && process.env.RESEND_FROM_EMAIL) {
     try {
       const html = clientChangeRequestEmail({
         username: user.firstname || "User",
-        siteName: site.name,
-        siteUrl: site.url,
+        siteName: site ? site.name : "No Site Selected",
+        siteUrl: site ? site.url : "#",
         requestDetails: `
-          <b>Site:</b> ${site.name}<br/>
-          <b>URL:</b> <a href="${site.url}" target="_blank">${site.url}</a><br/><br/>
+          ${
+            site
+              ? `
+            <b>Site:</b> ${site.name}<br/>
+            <b>URL:</b> <a href="${site.url}" target="_blank">${site.url}</a><br/><br/>
+          `
+              : ""
+          }
+
           <b>Title:</b> ${title}<br/>
           <b>Priority:</b> ${priority}<br/><br/>
           ${description}
-          ${attachments.length ? `<br/><br/><b>Attachment:</b> <a href="${attachments[0].url}">${attachments[0].original_name}</a>` : ""}
+
+          ${
+            attachments.length
+              ? `<br/><br/><b>Attachment:</b> 
+                 <a href="${attachments[0].url}">
+                 ${attachments[0].original_name}
+                 </a>`
+              : ""
+          }
         `,
       });
 
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
         to: process.env.ADMIN_EMAIL,
-        subject: `New Change Request - ${site.name} (${site.url})`,
+        subject: `New Change Request ${
+          site ? "- " + site.name : ""
+        }`,
         html,
       });
     } catch (err) {
@@ -142,7 +201,10 @@ exports.createRequest = asyncHandler(async (req, res) => {
     }
   }
 
-  res.status(201).json({ success: true, data: request });
+  res.status(201).json({
+    success: true,
+    data: request,
+  });
 });
 
 /**

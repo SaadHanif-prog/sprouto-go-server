@@ -36,13 +36,14 @@ const requestSchema = new mongoose.Schema(
     siteId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Site",
-      required: true,
+      required: false,
+      default: null,
     },
 
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false
     },
 
     assignedTo: {
@@ -74,10 +75,10 @@ const requestSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    messages:    [messageSchema],
+    messages: [messageSchema],
     attachments: [attachmentSchema],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("Request", requestSchema);
