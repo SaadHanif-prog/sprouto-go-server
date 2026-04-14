@@ -255,6 +255,7 @@ const login = asyncHandler(async (req, res) => {
     message: "Login successful.",
     data: {
       accessToken,
+      isPaymentPlanActive: user.isPaymentPlanActive,
       id: user._id,
 
       firstname: user.firstname,

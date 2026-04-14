@@ -40,6 +40,8 @@ const seedAdmin = async () => {
         plan: "pro",
         billingCycle: "annually",
       },
+
+      isPaymentPlanActive: true,
     };
 
     await UserModel.create(adminData);
