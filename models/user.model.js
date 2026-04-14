@@ -79,6 +79,11 @@ const userSchema = new mongoose.Schema(
       stripeCustomerId: String,
     },
 
+    isPaymentPlanActive : {
+      type : Boolean,
+      default : false
+    },
+
     // 🔥 REAL SOURCE OF TRUTH
     entitlements: [
       {

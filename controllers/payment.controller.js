@@ -527,7 +527,7 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
           break;
         }
  
-        // ─── Plan path (your existing logic, untouched) ───────────
+        // ─── Plan path )
         let plan = null;
         for (const key in PRICE_MAP) {
           for (const cycle in PRICE_MAP[key]) {
@@ -547,6 +547,7 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
           console.log("🔄 entitlement updated");
         } else {
           user.entitlements.push({ plan, stripeSubscriptionId: subscriptionId, expiresAt });
+          user.isPaymentPlanActive = true;
           console.log("✅ entitlement created");
         }
  

@@ -358,7 +358,10 @@ const verifyMe = asyncHandler(async (req, res) => {
 
       addonentitlementid:
         user.addonEntitlements?.map(a => a.addonId) || [],
+
+      isPaymentPlanActive: user.isPaymentPlanActive
     },
+
   });
 });
 
