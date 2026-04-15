@@ -8,6 +8,7 @@ const {
   updateRequest,
   deleteRequest,
   assignRequest,
+  completeRequest
 } = require("#controllers/request.controller");
 
 const authMiddleware = require("#middlewares/auth.middleware");
@@ -26,5 +27,7 @@ router.patch("/:id", authMiddleware, updateRequest);
 router.patch("/:id/assign", authMiddleware, assignRequest);
 
 router.delete("/:id", authMiddleware, deleteRequest);
+
+router.patch("/:requestId/complete", authMiddleware, completeRequest)
 
 module.exports = router;

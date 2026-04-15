@@ -15,11 +15,11 @@ const { getResend } = require("#utils/resend");
 
 // Helpers
 const generateAccessToken = (user) => {
-  return jwt.sign(user, ACCESS_TOKEN_SECRET, { expiresIn: "1d" });
+  return jwt.sign(user, ACCESS_TOKEN_SECRET, { expiresIn: "6h" });
 };
 
 const generateRefreshToken = (user) => {
-  return jwt.sign(user, REFRESH_TOKEN_SECRET, { expiresIn: "7d" });
+  return jwt.sign(user, REFRESH_TOKEN_SECRET, { expiresIn: "12h" });
 };
 
 // Common cookie options

@@ -17,18 +17,18 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const attachmentSchema = new mongoose.Schema(
   {
-    url:           { type: String, required: true },
-    public_id:     { type: String, required: true }, // ← Cloudinary public_id (for deletion)
-    original_name: { type: String },                 // ← original filename
-    mimetype:      { type: String },                 // ← e.g. "image/png", "application/pdf"
-    size:          { type: Number },                 // ← size in bytes
+    url: { type: String, required: true },
+    public_id: { type: String, required: true }, // ← Cloudinary public_id (for deletion)
+    original_name: { type: String }, // ← original filename
+    mimetype: { type: String }, // ← e.g. "image/png", "application/pdf"
+    size: { type: Number }, // ← size in bytes
   },
-  { _id: true, timestamps: true }  // ← _id: true so each attachment has its own ID
+  { _id: true, timestamps: true }, // ← _id: true so each attachment has its own ID
 );
 
 const requestSchema = new mongoose.Schema(
@@ -43,7 +43,7 @@ const requestSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: false
+      required: false,
     },
 
     assignedTo: {
@@ -77,6 +77,11 @@ const requestSchema = new mongoose.Schema(
 
     messages: [messageSchema],
     attachments: [attachmentSchema],
+
+    lastRemindedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );

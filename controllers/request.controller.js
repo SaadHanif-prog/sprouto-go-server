@@ -3,8 +3,10 @@ const Site = require("#models/site.model");
 const User = require("#models/user.model");
 const asyncHandler = require("#utils/async-handler");
 const {
-  clientChangeRequestEmail,
+  clientChangeRequestEmail
 } = require("#utils/email templates/change-request");
+
+const {taskCompletedEmail} = require("#utils/email templates/task-complete-email")
 const { getResend } = require("#utils/resend");
 const streamifier = require("streamifier");
 const cloudinary = require("#config/cloudinary");
@@ -298,4 +300,60 @@ exports.deleteRequest = asyncHandler(async (req, res) => {
 
   await request.deleteOne();
   res.json({ success: true, message: "Request deleted successfully" });
+});
+
+
+
+exports.completeRequest = asyncHandler(async (req, res) => {
+  const { requestId } = req.params;
+
+  // Update request status
+  const request = await Request.findByIdAndUpdate(
+    requestId,
+    { status: "completed" },
+    { new: true }
+  ).populate("userId", "firstname surname email");
+
+  if (!request) {
+    return res.status(404).json({
+      success: false,
+      message: "Request not found",
+    });
+  }
+
+  // Get related site
+  let site = null;
+
+  if (request.siteId) {
+    site = await Site.findById(request.siteId);
+  }
+
+  // Send completion email using Resend
+  const resend = getResend();
+
+  if (resend && process.env.RESEND_FROM_EMAIL) {
+    try {
+      const client = request.userId;
+
+      const html = taskCompletedEmail({
+        clientName: `${client.firstname} ${client.surname}`,
+        siteName: site ? site.name : "your site",
+        requestTitle: request.title,
+      });
+
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL,
+        to: client.email,
+        subject: "Your request has been completed ✅",
+        html,
+      });
+    } catch (err) {
+      console.error("Completion email failed:", err.message);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    data: request,
+  });
 });

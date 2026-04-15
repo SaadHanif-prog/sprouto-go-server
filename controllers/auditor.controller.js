@@ -37,7 +37,8 @@ async function fetchSiteContent(url) {
       $('meta[name="description"]').attr("content")?.trim() || "";
     const metaKeywords =
       $('meta[name="keywords"]').attr("content")?.trim() || "";
-    const ogTitle = $('meta[property="og:title"]').attr("content")?.trim() || "";
+    const ogTitle =
+      $('meta[property="og:title"]').attr("content")?.trim() || "";
     const ogDesc =
       $('meta[property="og:description"]').attr("content")?.trim() || "";
     const canonical = $('link[rel="canonical"]').attr("href")?.trim() || "";
@@ -63,7 +64,11 @@ async function fetchSiteContent(url) {
     });
 
     // Body text (trimmed to ~3000 chars to stay within token budget)
-    const bodyText = $("body").text().replace(/\s+/g, " ").trim().slice(0, 3000);
+    const bodyText = $("body")
+      .text()
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 3000);
 
     return `
 === REAL PAGE CONTENT FETCHED FROM: ${url} ===
@@ -109,7 +114,8 @@ exports.getAudit = asyncHandler(async (req, res) => {
   // ── Step 1: Actually fetch the site ──
   const siteContent = await fetchSiteContent(url);
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-preview-05-06" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
+
 
   const prompt = `
 You are an expert SEO and GEO consultant. Below is the REAL, LIVE content fetched directly from the website. 
@@ -185,7 +191,7 @@ Trending Keywords: ${auditContext.trendingKeywords?.join(", ")}
 Page Breakdown: ${auditContext.pageBreakdown
         ?.map(
           (p) =>
-            `${p.url} (Health: ${p.health}, Status: ${p.status}, Top Keyword: ${p.keyword})`
+            `${p.url} (Health: ${p.health}, Status: ${p.status}, Top Keyword: ${p.keyword})`,
         )
         .join("; ")}
 `
@@ -240,7 +246,9 @@ exports.getTargetsCsv = asyncHandler(async (req, res) => {
   // ── Fetch real content so keywords are grounded ──
   const siteContent = await fetchSiteContent(url);
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-preview-05-06" });
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-pro-preview-05-06",
+  });
 
   const contextLines = auditContext
     ? `Current Audit Context:
@@ -275,7 +283,7 @@ Rules:
   res.setHeader("Content-Type", "text/csv");
   res.setHeader(
     "Content-Disposition",
-    'attachment; filename="next_month_targets.csv"'
+    'attachment; filename="next_month_targets.csv"',
   );
   return res.status(200).send(csv);
 });

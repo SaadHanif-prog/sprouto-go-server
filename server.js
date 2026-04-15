@@ -17,7 +17,8 @@ const initSocket = require("#controllers/socket.controller");
 //Error Handler
 const { handleGeneralErrors } = require("#utils/error-handlers");
 
-// const test = require("#controllers/test")
+// Cron Jobs
+const { startDelayCheckerCron } = require("#utils/request-delay-checker.cron");
 
 /*********************************************** Imports On Top ***********************************************/
 
@@ -55,6 +56,7 @@ app.use(handleGeneralErrors);
 // Connect database first then run the server
 const startServer = async () => {
   await CONNECT_DATABASE();
+  startDelayCheckerCron();
 
   const httpServer = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
