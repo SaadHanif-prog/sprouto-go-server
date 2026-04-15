@@ -79,9 +79,9 @@ const userSchema = new mongoose.Schema(
       stripeCustomerId: String,
     },
 
-    isPaymentPlanActive : {
-      type : Boolean,
-      default : false
+    isPaymentPlanActive: {
+      type: Boolean,
+      default: false,
     },
 
     // 🔥 REAL SOURCE OF TRUTH
@@ -128,6 +128,11 @@ const userSchema = new mongoose.Schema(
       scope: String,
       token_type: String,
       expiry_date: Number,
+    },
+
+    acceptTerms: {
+      type: Boolean,
+      required: true,
     },
   },
   { timestamps: true },

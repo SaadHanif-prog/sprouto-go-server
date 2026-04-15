@@ -119,6 +119,7 @@ const register = asyncHandler(async (req, res) => {
     company,
     address,
     subscription,
+    acceptTerms
   } = req.body;
 
   const existingUser = await UserModel.findOne({ email });
@@ -137,6 +138,7 @@ const register = asyncHandler(async (req, res) => {
     company,
     address,
     subscription,
+    acceptTerms
   });
 
   // ─── Emails ───────────────────────────────────────────────────────────────
