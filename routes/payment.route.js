@@ -9,14 +9,13 @@ const {
 } = require("#controllers/payment.controller");
 
 
-const authMiddleware = require("#middlewares/auth.middleware");
 
-router.post("/create", authMiddleware, createSubscription);
+router.post("/create", createSubscription);
 
 router.post("/create-addon", createAddonSubscription);
 
-router.post("/cancel", authMiddleware, cancelSubscription);
+router.post("/cancel", cancelSubscription);
 
-router.post("/portal", authMiddleware, createBillingPortal);
+router.post("/portal", createBillingPortal);
 
 module.exports = router;

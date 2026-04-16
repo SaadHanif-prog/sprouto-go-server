@@ -8,7 +8,6 @@ const {
   updateSiteSettings,
 } = require("#controllers/sites.controller");
 
-const authMiddleware = require("#middlewares/auth.middleware");
 
 /**
  * @route GET /api/sites
@@ -16,7 +15,6 @@ const authMiddleware = require("#middlewares/auth.middleware");
  */
 router.get(
   "/",
-  authMiddleware,
   getSites
 );
 
@@ -26,7 +24,6 @@ router.get(
  */
 router.get(
   "/all",
-  authMiddleware,
   getAllSites
 );
 
@@ -36,7 +33,6 @@ router.get(
  */
 router.post(
   "/create",
-  authMiddleware,
   createSite
 );
 
@@ -46,7 +42,6 @@ router.post(
  */
 router.patch(
   "/:id/settings",
-  authMiddleware,
   updateSiteSettings
 );
 

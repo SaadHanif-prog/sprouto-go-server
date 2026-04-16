@@ -102,6 +102,11 @@ const userSchema = new mongoose.Schema(
           type: Date,
           required: true,
         },
+
+        cancelAtPeriodEnd: {
+          type: Boolean,
+          default: false
+        },
       },
     ],
 
@@ -119,6 +124,10 @@ const userSchema = new mongoose.Schema(
           type: Date,
           required: true,
         },
+        cancelAtPeriodEnd: {
+          type: Boolean,
+          default: false
+        },
       },
     ],
 
@@ -132,7 +141,6 @@ const userSchema = new mongoose.Schema(
 
     acceptTerms: {
       type: Boolean,
-      required: true,
     },
   },
   { timestamps: true },

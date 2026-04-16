@@ -38,6 +38,10 @@ const ADDON_PRICE_MAP = {
     monthly: process.env.STRIPE_ADDON_A4_MONTHLY,
     annually: process.env.STRIPE_ADDON_A4_ANNUAL,
   },
+   a5: {
+    monthly: process.env.STRIPE_ADDON_A5_MONTHLY,
+    annually: process.env.STRIPE_ADDON_A5_ANNUAL,
+  },
 };
 
 // Helper to resolve addonId from a priceId
@@ -682,11 +686,42 @@ exports.cancelSubscription = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "Subscription ID required" });
   }
 
-  await stripe.subscriptions.update(subscriptionId, {
+  const sub = await stripe.subscriptions.update(subscriptionId, {
     cancel_at_period_end: true,
   });
 
-  res.json({ message: "Subscription will cancel at period end" });
+  // Try plan entitlement
+  let result = await User.updateOne(
+    { "entitlements.stripeSubscriptionId": subscriptionId },
+    {
+      $set: {
+        "entitlements.$.cancelAtPeriodEnd": true,
+      },
+    }
+  );
+
+  // If not found, try addon entitlement
+  if (result.matchedCount === 0) {
+    result = await User.updateOne(
+      { "addonEntitlements.stripeSubscriptionId": subscriptionId },
+      {
+        $set: {
+          "addonEntitlements.$.cancelAtPeriodEnd": true,
+        },
+      }
+    );
+  }
+
+  if (result.matchedCount === 0) {
+    return res.status(404).json({
+      message: "Subscription found in Stripe but not in database",
+    });
+  }
+
+  res.json({
+    message: "Subscription will cancel at period end",
+    cancelAtPeriodEnd: sub.cancel_at_period_end,
+  });
 });
 
 // ==============================
