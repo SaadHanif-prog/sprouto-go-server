@@ -1,10 +1,11 @@
 const Stripe = require("stripe");
 const User = require("#models/user.model");
 const asyncHandler = require("#utils/async-handler");
-const {clientPaymentSuccessEmail, adminPaymentSuccessEmail} = require("#utils/email templates/payment");
-const {getResend} = require("#utils/resend");
-
-
+const {
+  clientPaymentSuccessEmail,
+  adminPaymentSuccessEmail,
+} = require("#utils/email templates/payment");
+const { getResend } = require("#utils/resend");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2023-10-16",
@@ -34,11 +35,11 @@ const ADDON_PRICE_MAP = {
     monthly: process.env.STRIPE_ADDON_A3_MONTHLY,
     annually: process.env.STRIPE_ADDON_A3_ANNUAL,
   },
-   a4: {
+  a4: {
     monthly: process.env.STRIPE_ADDON_A4_MONTHLY,
     annually: process.env.STRIPE_ADDON_A4_ANNUAL,
   },
-   a5: {
+  a5: {
     monthly: process.env.STRIPE_ADDON_A5_MONTHLY,
     annually: process.env.STRIPE_ADDON_A5_ANNUAL,
   },
@@ -60,7 +61,25 @@ function resolveAddonId(priceId) {
 // CREATE SUBSCRIPTION
 // ==============================
 exports.createSubscription = asyncHandler(async (req, res) => {
-  const { planId, billingCycle } = req.body;
+  const { planId, billingCycle, promoCode } = req.body;
+
+  let discounts = [];
+
+  if (promoCode) {
+    const codes = await stripe.promotionCodes.list({
+      code: promoCode,
+      active: true,
+      limit: 1,
+    });
+
+    if (!codes.data.length) {
+      return res.status(400).json({
+        message: "Invalid or expired promo code",
+      });
+    }
+
+    discounts = [{ promotion_code: codes.data[0].id }];
+  }
 
   const allowedPlans = Object.keys(PRICE_MAP);
   const allowedCycles = ["monthly", "annually"];
@@ -100,6 +119,7 @@ exports.createSubscription = asyncHandler(async (req, res) => {
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: priceId }],
+    discounts,
     payment_behavior: "default_incomplete",
     collection_method: "charge_automatically",
     payment_settings: {
@@ -141,18 +161,37 @@ exports.createSubscription = asyncHandler(async (req, res) => {
   });
 });
 
-
-
 // ==============================
 // Addon
 // ==============================
 exports.createAddonSubscription = asyncHandler(async (req, res) => {
-  const { addonId, billingCycle } = req.body;
+  const { addonId, billingCycle, promoCode } = req.body;
+
+  let discounts = [];
+
+  if (promoCode) {
+    const codes = await stripe.promotionCodes.list({
+      code: promoCode,
+      active: true,
+      limit: 1,
+    });
+
+    if (!codes.data.length) {
+      return res.status(400).json({
+        message: "Invalid or expired promo code",
+      });
+    }
+
+    discounts = [{ promotion_code: codes.data[0].id }];
+  }
 
   const allowedAddons = Object.keys(ADDON_PRICE_MAP);
   const allowedCycles = ["monthly", "annually"];
 
-  if (!allowedAddons.includes(addonId) || !allowedCycles.includes(billingCycle)) {
+  if (
+    !allowedAddons.includes(addonId) ||
+    !allowedCycles.includes(billingCycle)
+  ) {
     return res.status(400).json({ message: "Invalid addon or billing cycle" });
   }
 
@@ -179,6 +218,7 @@ exports.createAddonSubscription = asyncHandler(async (req, res) => {
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: priceId }],
+    discounts,
     payment_behavior: "default_incomplete",
     collection_method: "charge_automatically",
     payment_settings: {
@@ -209,7 +249,6 @@ exports.createAddonSubscription = asyncHandler(async (req, res) => {
 
   res.json({ clientSecret: paymentIntent.client_secret });
 });
-
 
 // ==============================
 // STRIPE WEBHOOK
@@ -402,26 +441,52 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
 
   // ─── DEBUG LOGS ───────────────────────────────────────────────────────────
   console.log("🔍 [WEBHOOK DEBUG] stripe-signature present:", !!sig);
-  console.log("🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET prefix:", process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + "...");
+  console.log(
+    "🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET prefix:",
+    process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + "...",
+  );
   console.log("🔍 [WEBHOOK DEBUG] stripe-signature value:", sig);
-  console.log("🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET set:", !!process.env.STRIPE_WEBHOOK_SECRET);
-  console.log("🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET prefix:", process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + "...");
+  console.log(
+    "🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET set:",
+    !!process.env.STRIPE_WEBHOOK_SECRET,
+  );
+  console.log(
+    "🔍 [WEBHOOK DEBUG] STRIPE_WEBHOOK_SECRET prefix:",
+    process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + "...",
+  );
   console.log("🔍 [WEBHOOK DEBUG] req.body type:", typeof req.body);
-  console.log("🔍 [WEBHOOK DEBUG] req.body is Buffer:", Buffer.isBuffer(req.body));
+  console.log(
+    "🔍 [WEBHOOK DEBUG] req.body is Buffer:",
+    Buffer.isBuffer(req.body),
+  );
   console.log("🔍 [WEBHOOK DEBUG] req.body length:", req.body?.length ?? "N/A");
-  console.log("🔍 [WEBHOOK DEBUG] req.body constructor:", req.body?.constructor?.name);
+  console.log(
+    "🔍 [WEBHOOK DEBUG] req.body constructor:",
+    req.body?.constructor?.name,
+  );
 
   if (typeof req.body === "string") {
-    console.log("🔍 [WEBHOOK DEBUG] body is STRING (first 200):", req.body.substring(0, 200));
+    console.log(
+      "🔍 [WEBHOOK DEBUG] body is STRING (first 200):",
+      req.body.substring(0, 200),
+    );
   } else if (Buffer.isBuffer(req.body)) {
-    console.log("🔍 [WEBHOOK DEBUG] body is BUFFER (first 200):", req.body.toString("utf8").substring(0, 200));
+    console.log(
+      "🔍 [WEBHOOK DEBUG] body is BUFFER (first 200):",
+      req.body.toString("utf8").substring(0, 200),
+    );
   } else if (typeof req.body === "object") {
     // ⚠️ This means express.json() or bodyParser.json() ran first — raw body is gone
-    console.log("🔍 [WEBHOOK DEBUG] ⚠️  body is a PARSED OBJECT — body-parser destroyed the raw body. This is why Stripe signature fails.");
-    console.log("🔍 [WEBHOOK DEBUG] body (object, first 200):", JSON.stringify(req.body).substring(0, 200));
+    console.log(
+      "🔍 [WEBHOOK DEBUG] ⚠️  body is a PARSED OBJECT — body-parser destroyed the raw body. This is why Stripe signature fails.",
+    );
+    console.log(
+      "🔍 [WEBHOOK DEBUG] body (object, first 200):",
+      JSON.stringify(req.body).substring(0, 200),
+    );
   }
   // ─── END DEBUG LOGS ─────────────────────
- 
+
   try {
     event = stripe.webhooks.constructEvent(
       req.body,
@@ -431,66 +496,81 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
   } catch (err) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
- 
+
   switch (event.type) {
- 
     case "customer.subscription.updated": {
       try {
         console.log("✅ subscription.updated triggered");
- 
+
         const rawSub = event.data.object;
         const sub = await stripe.subscriptions.retrieve(rawSub.id);
- 
+
         const customerId = sub.customer;
         const subscriptionId = sub.id;
         const isAddon = sub.metadata?.type === "addon";
- 
+
         console.log("customerId:", customerId);
         console.log("subscriptionId:", subscriptionId);
         console.log("status:", sub.status);
         console.log("isAddon:", isAddon);
- 
+
         if (sub.status !== "active") {
           console.log("⚠️ Subscription not active, skipping");
           break;
         }
- 
+
         const user = await User.findOne({
           "subscription.stripeCustomerId": customerId,
         });
- 
-        if (!user) { console.log("❌ User not found"); break; }
- 
+
+        if (!user) {
+          console.log("❌ User not found");
+          break;
+        }
+
         const priceId = sub.items?.data?.[0]?.price?.id;
-        if (!priceId) { console.log("❌ No priceId found"); break; }
- 
+        if (!priceId) {
+          console.log("❌ No priceId found");
+          break;
+        }
+
         const periodEnd = sub.current_period_end;
-        if (!periodEnd) { console.log("❌ No period end"); break; }
- 
+        if (!periodEnd) {
+          console.log("❌ No period end");
+          break;
+        }
+
         const expiresAt = new Date(periodEnd * 1000);
- 
+
         // ─── ADDON path ───────────────────────────────────────────
         if (isAddon) {
           const addonId = sub.metadata.addonId || resolveAddonId(priceId);
- 
-          if (!addonId) { console.log("❌ Addon ID not matched"); break; }
- 
+
+          if (!addonId) {
+            console.log("❌ Addon ID not matched");
+            break;
+          }
+
           const existing = user.addonEntitlements.find(
             (e) => e.stripeSubscriptionId === subscriptionId,
           );
- 
+
           if (existing) {
             existing.expiresAt = expiresAt;
             existing.addonId = addonId;
             console.log("🔄 addon entitlement updated");
           } else {
-            user.addonEntitlements.push({ addonId, stripeSubscriptionId: subscriptionId, expiresAt });
+            user.addonEntitlements.push({
+              addonId,
+              stripeSubscriptionId: subscriptionId,
+              expiresAt,
+            });
             console.log("✅ addon entitlement created");
           }
- 
+
           await user.save();
           console.log("✅ user saved (addon)");
- 
+
           // ─── Payment emails → client + admin (addon) ───────────
           const resend = getResend();
           if (resend && process.env.RESEND_FROM_EMAIL) {
@@ -507,7 +587,7 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
                   expiresAt,
                 }),
               });
- 
+
               if (process.env.ADMIN_EMAIL) {
                 await resend.emails.send({
                   from: process.env.RESEND_FROM_EMAIL,
@@ -527,10 +607,10 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
               console.error("🔥 Addon payment email error:", emailErr);
             }
           }
- 
+
           break;
         }
- 
+
         // ─── Plan path )
         let plan = null;
         for (const key in PRICE_MAP) {
@@ -538,26 +618,33 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
             if (PRICE_MAP[key][cycle] === priceId) plan = key;
           }
         }
- 
-        if (!plan) { console.log("❌ Plan not matched"); break; }
- 
+
+        if (!plan) {
+          console.log("❌ Plan not matched");
+          break;
+        }
+
         const existing = user.entitlements.find(
           (e) => e.stripeSubscriptionId === subscriptionId,
         );
- 
+
         if (existing) {
           existing.expiresAt = expiresAt;
           existing.plan = plan;
           console.log("🔄 entitlement updated");
         } else {
-          user.entitlements.push({ plan, stripeSubscriptionId: subscriptionId, expiresAt });
+          user.entitlements.push({
+            plan,
+            stripeSubscriptionId: subscriptionId,
+            expiresAt,
+          });
           user.isPaymentPlanActive = true;
           console.log("✅ entitlement created");
         }
- 
+
         await user.save();
         console.log("✅ user saved (plan)");
- 
+
         // ─── Payment emails → client + admin (plan) ────────────────
         const resend = getResend();
         if (resend && process.env.RESEND_FROM_EMAIL) {
@@ -574,7 +661,7 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
                 expiresAt,
               }),
             });
- 
+
             if (process.env.ADMIN_EMAIL) {
               await resend.emails.send({
                 from: process.env.RESEND_FROM_EMAIL,
@@ -594,32 +681,37 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
             console.error("🔥 Plan payment email error:", emailErr);
           }
         }
- 
       } catch (err) {
         console.error("🔥 FULL ERROR:", err);
       }
       break;
     }
- 
+
     case "invoice.payment_failed": {
       try {
         console.log("❌ payment_failed triggered");
- 
+
         const invoice = event.data.object;
         const customerId = invoice.customer;
         const subscriptionId =
           invoice.subscription ||
           invoice.lines?.data?.[0]?.subscription ||
           null;
- 
-        if (!subscriptionId) { console.log("❌ Missing subscriptionId"); break; }
- 
+
+        if (!subscriptionId) {
+          console.log("❌ Missing subscriptionId");
+          break;
+        }
+
         const user = await User.findOne({
           "subscription.stripeCustomerId": customerId,
         });
- 
-        if (!user) { console.log("❌ User not found"); break; }
- 
+
+        if (!user) {
+          console.log("❌ User not found");
+          break;
+        }
+
         // Remove from both arrays — safe, filter won't error if not found
         user.entitlements = user.entitlements.filter(
           (e) => e.stripeSubscriptionId !== subscriptionId,
@@ -627,22 +719,21 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
         user.addonEntitlements = user.addonEntitlements.filter(
           (e) => e.stripeSubscriptionId !== subscriptionId,
         );
- 
+
         await user.save();
         console.log("🗑 entitlement removed (payment failed)");
- 
       } catch (err) {
         console.error("🔥 FULL ERROR:", err);
       }
       break;
     }
- 
+
     case "customer.subscription.deleted": {
       try {
         console.log("❌ subscription.deleted triggered");
- 
+
         const sub = event.data.object;
- 
+
         // Try plan entitlements first, then addon entitlements
         const user = await User.findOne({
           $or: [
@@ -650,29 +741,31 @@ exports.stripeWebhook = asyncHandler(async (req, res) => {
             { "addonEntitlements.stripeSubscriptionId": sub.id },
           ],
         });
- 
-        if (!user) { console.log("❌ User not found"); break; }
- 
+
+        if (!user) {
+          console.log("❌ User not found");
+          break;
+        }
+
         user.entitlements = user.entitlements.filter(
           (e) => e.stripeSubscriptionId !== sub.id,
         );
         user.addonEntitlements = user.addonEntitlements.filter(
           (e) => e.stripeSubscriptionId !== sub.id,
         );
- 
+
         await user.save();
         console.log("🗑 entitlement removed (deleted)");
- 
       } catch (err) {
         console.error("🔥 FULL ERROR:", err);
       }
       break;
     }
- 
+
     default:
       break;
   }
- 
+
   res.json({ received: true });
 });
 
@@ -697,7 +790,7 @@ exports.cancelSubscription = asyncHandler(async (req, res) => {
       $set: {
         "entitlements.$.cancelAtPeriodEnd": true,
       },
-    }
+    },
   );
 
   // If not found, try addon entitlement
@@ -708,7 +801,7 @@ exports.cancelSubscription = asyncHandler(async (req, res) => {
         $set: {
           "addonEntitlements.$.cancelAtPeriodEnd": true,
         },
-      }
+      },
     );
   }
 
