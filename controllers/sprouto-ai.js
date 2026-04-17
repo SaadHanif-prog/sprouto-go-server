@@ -2,26 +2,18 @@ const asyncHandler = require("#utils/async-handler");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
 const cheerio = require("cheerio");
+const Site = require("#models/site.model"); 
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const CHAT_MODEL = "gemini-2.5-flash";
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min idle expiry
-const MAX_HISTORY_TURNS = 20;           // Max user/model pairs retained
+const SESSION_TTL_MS = 30 * 60 * 1000;
+const MAX_HISTORY_TURNS = 20;
 
-/**
- * In-memory session store.
- * Each entry: { chat, history, lastActive, site, siteContent }
- * Swap for Redis in production.
- */
 const chatSessions = new Map();
 
 // ─── Site Fetching ────────────────────────────────────────────────────────────
 
-/**
- * Fetches real HTML from the URL and extracts SEO-relevant text.
- * Returns a grounded content string for the system prompt.
- */
 async function fetchSiteContent(url) {
   try {
     const { data: html } = await axios.get(url, {
@@ -35,10 +27,10 @@ async function fetchSiteContent(url) {
     const $ = cheerio.load(html);
     $("script, style, noscript, iframe, svg").remove();
 
-    const title       = $("title").text().trim();
-    const metaDesc    = $('meta[name="description"]').attr("content")?.trim() || "";
-    const metaKw      = $('meta[name="keywords"]').attr("content")?.trim() || "";
-    const canonical   = $('link[rel="canonical"]').attr("href")?.trim() || "";
+    const title     = $("title").text().trim();
+    const metaDesc  = $('meta[name="description"]').attr("content")?.trim() || "";
+    const metaKw    = $('meta[name="keywords"]').attr("content")?.trim() || "";
+    const canonical = $('link[rel="canonical"]').attr("href")?.trim() || "";
 
     const h1s = [];
     $("h1").each((_, el) => h1s.push($(el).text().trim()));
@@ -71,7 +63,7 @@ ${bodyText}
   } catch (err) {
     return `=== FETCH FAILED FOR: ${url} ===
 Error: ${err.message}
-Note: Site may be blocking bots or URL is invalid. Base responses on the site name and URL context only — do not invent specific data.
+Note: Site may be blocking bots or URL is invalid. Base responses on the site name and URL context only.
 === END ===`;
   }
 }
@@ -81,40 +73,39 @@ Note: Site may be blocking bots or URL is invalid. Base responses on the site na
 function pruneExpiredSessions() {
   const now = Date.now();
   for (const [key, session] of chatSessions.entries()) {
-    if (now - session.lastActive > SESSION_TTL_MS) {
-      chatSessions.delete(key);
-    }
+    if (now - session.lastActive > SESSION_TTL_MS) chatSessions.delete(key);
   }
 }
 
 function buildSystemInstruction(site, siteContent) {
-  return `You are SproutoAI, an advanced, highly intelligent AI agent for the SproutoGO platform.
+  return `You are SproutoAI, an advanced AI agent built exclusively for the SproutoGO platform.
 
-You are currently assisting the user with their site: ${site.name} (${site.url}).
+You are scoped ONLY to the following site:
+  Name: ${site.name}
+  URL:  ${site.url}
 
-Below is REAL, LIVE content fetched directly from their site. Use this as your primary knowledge source when answering questions about their site. Do NOT confuse this with SproutoGO's own platform or any other site.
+Below is live content fetched directly from that site. Use it as your primary knowledge source.
 
 ${siteContent}
 
-You can help the user with:
-- Deep questions about their site's content, structure, and SEO
-- Comparisons, predictions, and trend analysis based on the above content
-- Generating reports, copy, or marketing material tailored to their niche
-- Explaining audit results or keyword strategies
+━━━ STRICT SCOPE RULE ━━━
+You ONLY answer questions that are directly relevant to:
+- ${site.name}'s content, SEO, GEO, performance, copy, strategy, or marketing
+- Data, metrics, or audit results for this specific site
+- Generating reports, copy, or materials tailored to this site's niche
 
-If the user asks you to create a document, report, or copy:
-→ Format it beautifully in Markdown so they can export it.
+If the user asks about anything outside this scope — general knowledge, other websites, coding help, personal questions, world events, or anything unrelated to ${site.name} — respond ONLY with:
+"I'm SproutoAI, purpose-built for **${site.name}**. I'm not designed for general conversations — but I'd love to help you with anything related to your site! What would you like to know?"
+
+Do NOT attempt to answer off-topic questions even partially. Politely redirect every time.
+━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Tone & Style:
 - Professional, insightful, and highly capable
-- Clear and structured with clean formatting (headings, bullets, spacing)
-- Concise but valuable — avoid long dense paragraphs
+- Clean Markdown formatting (headings, bullets, spacing)
 - Always refer to the site by name: ${site.name}`;
 }
 
-/**
- * Creates a fresh Gemini chat session with the given history.
- */
 function createGeminiChat(site, siteContent, history = []) {
   const model = genAI.getGenerativeModel({
     model: CHAT_MODEL,
@@ -123,19 +114,14 @@ function createGeminiChat(site, siteContent, history = []) {
   return model.startChat({ history });
 }
 
-/**
- * Gets an existing session or creates a new one.
- * If the site URL changed (user switched sites), the session is rebuilt.
- * If history is too long, oldest turns are pruned and chat is rebuilt.
- */
 async function getOrCreateSession(sessionKey, site, siteContent) {
   const existing = chatSessions.get(sessionKey);
 
   if (existing) {
     existing.lastActive = Date.now();
 
-    // ── Site switched — rebuild session entirely with new site content ──
-    if (existing.site.url !== site.url) {
+    // Site switched — rebuild with fresh content
+    if (existing.site._id?.toString() !== site._id?.toString()) {
       const freshContent = await fetchSiteContent(site.url);
       const newSession = {
         chat: createGeminiChat(site, freshContent),
@@ -148,20 +134,15 @@ async function getOrCreateSession(sessionKey, site, siteContent) {
       return newSession;
     }
 
-    // ── History too long — trim and rebuild ──
+    // History too long — trim and rebuild
     if (existing.history.length > MAX_HISTORY_TURNS * 2) {
       existing.history = existing.history.slice(-(MAX_HISTORY_TURNS * 2));
-      existing.chat = createGeminiChat(
-        existing.site,
-        existing.siteContent,
-        existing.history
-      );
+      existing.chat = createGeminiChat(existing.site, existing.siteContent, existing.history);
     }
 
     return existing;
   }
 
-  // ── Brand-new session ──
   const session = {
     chat: createGeminiChat(site, siteContent),
     history: [],
@@ -169,64 +150,50 @@ async function getOrCreateSession(sessionKey, site, siteContent) {
     site,
     siteContent,
   };
-
   chatSessions.set(sessionKey, session);
   return session;
 }
 
-// ─── Context Extraction ───────────────────────────────────────────────────────
-
-/**
- * Parses the [Site: NAME | URL] tag injected by the frontend.
- */
-function extractSiteContext(message = "") {
-  const match = message.match(/\[Site:\s*(.*?)\s*\|\s*(.*?)\]/);
-  if (!match) return { name: "Unknown Site", url: "" };
-  return { name: match[1].trim(), url: match[2].trim() };
-}
-
 // ─── Controllers ─────────────────────────────────────────────────────────────
 
-/**
- * @desc    Send a message to SproutoAI assistant
- * @route   POST /api/ai/chat
- * @access  Private
- */
 exports.sendChatMessage = asyncHandler(async (req, res) => {
-  const { message, sessionId } = req.body;
+  const { message, sessionId, siteId } = req.body;
   const sessionKey = req?.user?.userId || sessionId;
 
-  if (!message || typeof message !== "string" || !message.trim()) {
+  if (!message?.trim()) {
     return res.status(400).json({ success: false, message: "message is required" });
   }
-
+  if (!siteId) {
+    return res.status(400).json({ success: false, message: "siteId is required" });
+  }
   if (!sessionKey) {
     return res.status(400).json({ success: false, message: "sessionId is required" });
   }
 
   pruneExpiredSessions();
 
-  const site = extractSiteContext(message);
+  // Look up the real site from DB — no more parsing it from the message string
+  const site = await Site.findById(siteId).lean();
+  if (!site) {
+    return res.status(404).json({ success: false, message: "Site not found" });
+  }
 
-  // Fetch real site content if we have a URL and no cached session yet
-  // (getOrCreateSession handles the cache-hit case)
   const existingSession = chatSessions.get(sessionKey);
-  const needsFetch = !existingSession || existingSession.site.url !== site.url;
-  const siteContent = needsFetch && site.url
-    ? await fetchSiteContent(site.url)
-    : existingSession?.siteContent || "No site content available.";
+  const needsFetch =
+    !existingSession || existingSession.site._id?.toString() !== site._id?.toString();
+
+  const siteContent =
+    needsFetch && site.url
+      ? await fetchSiteContent(site.url)
+      : existingSession?.siteContent || "No site content available.";
 
   const session = await getOrCreateSession(sessionKey, site, siteContent);
 
-  // Strip the [Site:...] tag before sending to Gemini
-  const cleanedMessage = message.replace(/\[Site:.*?\]\s*/g, "").trim();
-
-  const result = await session.chat.sendMessage(cleanedMessage);
+  const result = await session.chat.sendMessage(message.trim());
   const responseText = result.response.text();
 
-  // Keep our own history in sync for trimming/rebuilding
   session.history.push(
-    { role: "user",  parts: [{ text: cleanedMessage }] },
+    { role: "user",  parts: [{ text: message.trim() }] },
     { role: "model", parts: [{ text: responseText }] }
   );
 
@@ -236,20 +203,8 @@ exports.sendChatMessage = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * @desc    Clear/reset a chat session
- * @route   DELETE /api/ai/chat/:sessionId
- * @access  Private
- */
 exports.clearChatSession = asyncHandler(async (req, res) => {
   const sessionKey = req?.user?.userId || req.params.sessionId;
-
-  if (chatSessions.has(sessionKey)) {
-    chatSessions.delete(sessionKey);
-  }
-
-  return res.status(200).json({
-    success: true,
-    message: "Chat session cleared",
-  });
+  if (chatSessions.has(sessionKey)) chatSessions.delete(sessionKey);
+  return res.status(200).json({ success: true, message: "Chat session cleared" });
 });
