@@ -7,13 +7,6 @@ const seedDeveloper = async () => {
     await mongoose.connect(process.env.DATABASE_URI);
     console.log("🚀 Database connected for seeding...");
 
-    const developerExists = await UserModel.findOne({ role: "developer" });
-
-    if (developerExists) {
-      console.log("⚠️ Developer already exists.");
-      process.exit(0);
-    }
-
     const developerData = {
       role: "developer",
 
@@ -21,7 +14,7 @@ const seedDeveloper = async () => {
       firstname: "Dev",
       surname: "User",
 
-      email: "developer@sproutogo.com",
+      email: "devsaad287@gmail.com",
       password: "developer@",
 
       company: {

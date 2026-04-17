@@ -144,8 +144,8 @@ module.exports = (io, socket) => {
       io.to(requestId).emit("chat:message", populated);
 
       /* ── Email notification — only on the first message of today ── */
-      const firstToday = await isFirstMessageToday(requestId);
-      if (!firstToday) return;
+      // const firstToday = await isFirstMessageToday(requestId);
+      // if (!firstToday) return;
 
       // Load sender + full request context for the email
       const [sender, fullRequest] = await Promise.all([
