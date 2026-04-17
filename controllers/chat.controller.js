@@ -192,22 +192,31 @@ module.exports = (io, socket) => {
           recipients.push({ email: process.env.ADMIN_EMAIL, name: "Admin" });
         }
       } else {
-        // admin/superadmin sent → notify client + assigned developer
-        if (fullRequest.userId) {
-          const client = fullRequest.userId;
-          recipients.push({
-            email: client.email,
-            name: `${client.firstname} ${client.surname}`.trim(),
-          });
-        }
-        if (fullRequest.assignedTo) {
-          const dev = fullRequest.assignedTo;
-          recipients.push({
-            email: dev.email,
-            name: `${dev.firstname} ${dev.surname}`.trim(),
-          });
-        }
-      }
+  // admin/superadmin sent → notify client + assigned developer + admin email
+
+  if (fullRequest.userId) {
+    const client = fullRequest.userId;
+    recipients.push({
+      email: client.email,
+      name: `${client.firstname} ${client.surname}`.trim(),
+    });
+  }
+
+  if (fullRequest.assignedTo) {
+    const dev = fullRequest.assignedTo;
+    recipients.push({
+      email: dev.email,
+      name: `${dev.firstname} ${dev.surname}`.trim(),
+    });
+  }
+
+  if (process.env.ADMIN_EMAIL) {
+    recipients.push({
+      email: process.env.ADMIN_EMAIL,
+      name: "Admin",
+    });
+  }
+}
 
       // Fire all emails concurrently — failures are swallowed inside the helper
       await Promise.all(
