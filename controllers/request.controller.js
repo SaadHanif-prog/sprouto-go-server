@@ -3,10 +3,12 @@ const Site = require("#models/site.model");
 const User = require("#models/user.model");
 const asyncHandler = require("#utils/async-handler");
 const {
-  clientChangeRequestEmail
+  clientChangeRequestEmail,
 } = require("#utils/email templates/change-request");
 
-const {taskCompletedEmail} = require("#utils/email templates/task-complete-email")
+const {
+  taskCompletedEmail,
+} = require("#utils/email templates/task-complete-email");
 const { getResend } = require("#utils/resend");
 const streamifier = require("streamifier");
 const cloudinary = require("#config/cloudinary");
@@ -63,6 +65,7 @@ exports.getRequests = asyncHandler(async (req, res) => {
       }
 
       filter = { siteId, userId };
+
     } else {
       // no siteId = all user's requests
       filter = { userId };
@@ -74,6 +77,8 @@ exports.getRequests = asyncHandler(async (req, res) => {
     .populate("userId", "firstname surname email")
     .populate("assignedTo", "firstname surname email")
     .sort({ createdAt: -1 });
+
+  console.log("all requests", requests);
 
   res.json({
     success: true,
@@ -91,8 +96,8 @@ exports.createRequest = asyncHandler(async (req, res) => {
   let { siteId, title, description, priority } = req.body;
 
   if (siteId === "null" || siteId === "" || siteId === undefined) {
-  siteId = null;
- }
+    siteId = null;
+  }
 
   if (!title || !description || !priority) {
     return res.status(400).json({
@@ -129,10 +134,7 @@ exports.createRequest = asyncHandler(async (req, res) => {
   let attachments = [];
 
   if (req.file) {
-    const result = await uploadToCloudinary(
-      req.file.buffer,
-      req.file.mimetype
-    );
+    const result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
 
     attachments = [
       {
@@ -193,9 +195,7 @@ exports.createRequest = asyncHandler(async (req, res) => {
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
         to: process.env.ADMIN_EMAIL,
-        subject: `New Change Request ${
-          site ? "- " + site.name : ""
-        }`,
+        subject: `New Change Request ${site ? "- " + site.name : ""}`,
         html,
       });
     } catch (err) {
@@ -302,8 +302,6 @@ exports.deleteRequest = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Request deleted successfully" });
 });
 
-
-
 exports.completeRequest = asyncHandler(async (req, res) => {
   const { requestId } = req.params;
 
@@ -311,7 +309,7 @@ exports.completeRequest = asyncHandler(async (req, res) => {
   const request = await Request.findByIdAndUpdate(
     requestId,
     { status: "completed" },
-    { new: true }
+    { new: true },
   ).populate("userId", "firstname surname email");
 
   if (!request) {
@@ -356,4 +354,47 @@ exports.completeRequest = asyncHandler(async (req, res) => {
     success: true,
     data: request,
   });
+});
+
+/**
+ * @desc Add attachment to existing request
+ * @route POST /api/requests/:id/attachments
+ */
+exports.addAttachment = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const request = await Request.findById(id);
+  if (!request) {
+    return res
+      .status(404)
+      .json({ success: false, message: "Request not found" });
+  }
+
+  if (!req.files || req.files.length === 0) {
+    return res
+      .status(400)
+      .json({ success: false, message: "No files uploaded" });
+  }
+
+  // Upload all files to Cloudinary in parallel
+  const uploaded = await Promise.all(
+    req.files.map(async (file) => {
+      const result = await uploadToCloudinary(file.buffer, file.mimetype);
+      return {
+        url: result.secure_url,
+        public_id: result.public_id,
+        original_name: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+      };
+    }),
+  );
+
+  request.attachments.push(...uploaded);
+  await request.save();
+
+  // Return only the newly added attachments
+  const saved = request.attachments.slice(-uploaded.length);
+
+  res.status(201).json({ success: true, files: saved });
 });

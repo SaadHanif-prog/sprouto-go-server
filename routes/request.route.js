@@ -8,7 +8,8 @@ const {
   updateRequest,
   deleteRequest,
   assignRequest,
-  completeRequest
+  completeRequest,
+  addAttachment
 } = require("#controllers/request.controller");
 
 
@@ -20,6 +21,8 @@ const upload = multer({
 router.get("/", getRequests);
 
 router.post("/", upload.single("file"), createRequest);
+
+router.post("/:id/attachments", upload.array("files", 10), addAttachment);
 
 router.patch("/:id", updateRequest);
 

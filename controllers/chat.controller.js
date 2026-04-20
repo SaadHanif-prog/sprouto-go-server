@@ -110,7 +110,9 @@ module.exports = (io, socket) => {
   socket.on("chat:send", async ({ requestId, text }) => {
     try {
       if (!text?.trim()) {
-        return socket.emit("chat:error", { message: "Message cannot be empty" });
+        return socket.emit("chat:error", {
+          message: "Message cannot be empty",
+        });
       }
 
       const request = await Request.findById(requestId)
@@ -137,7 +139,7 @@ module.exports = (io, socket) => {
 
       const populated = await Message.findById(message._id).populate(
         "senderId",
-        "firstname surname email role"
+        "firstname surname email role",
       );
 
       // Broadcast to everyone in the room (including sender)
@@ -192,31 +194,29 @@ module.exports = (io, socket) => {
           recipients.push({ email: process.env.ADMIN_EMAIL, name: "Admin" });
         }
       } else {
-  // admin/superadmin sent → notify client + assigned developer + admin email
+        if (fullRequest.userId) {
+          const client = fullRequest.userId;
+          recipients.push({
+            email: client.email,
+            name: `${client.firstname} ${client.surname}`.trim(),
+          });
+        }
 
-  if (fullRequest.userId) {
-    const client = fullRequest.userId;
-    recipients.push({
-      email: client.email,
-      name: `${client.firstname} ${client.surname}`.trim(),
-    });
-  }
+        if (fullRequest.assignedTo) {
+          const dev = fullRequest.assignedTo;
+          recipients.push({
+            email: dev.email,
+            name: `${dev.firstname} ${dev.surname}`.trim(),
+          });
+        }
 
-  if (fullRequest.assignedTo) {
-    const dev = fullRequest.assignedTo;
-    recipients.push({
-      email: dev.email,
-      name: `${dev.firstname} ${dev.surname}`.trim(),
-    });
-  }
-
-  if (process.env.ADMIN_EMAIL) {
-    recipients.push({
-      email: process.env.ADMIN_EMAIL,
-      name: "Admin",
-    });
-  }
-}
+        if (process.env.ADMIN_EMAIL) {
+          recipients.push({
+            email: process.env.ADMIN_EMAIL,
+            name: "Admin",
+          });
+        }
+      }
 
       // Fire all emails concurrently — failures are swallowed inside the helper
       await Promise.all(
@@ -229,8 +229,8 @@ module.exports = (io, socket) => {
             siteName,
             siteUrl,
             messagePreview: text.trim(),
-          })
-        )
+          }),
+        ),
       );
     } catch (err) {
       console.error("[chat:send]", err);
