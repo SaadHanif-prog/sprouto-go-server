@@ -93,7 +93,10 @@ exports.getRequests = asyncHandler(async (req, res) => {
 
 exports.createRequest = asyncHandler(async (req, res) => {
   const userId = req.user.id;
-  let { siteId, title, description, priority } = req.body;
+  let { siteId, title, description, priority} = req.body;
+
+  const requestForNewSite =
+  req.body.requestForNewSite === "true";
 
   if (siteId === "null" || siteId === "" || siteId === undefined) {
     siteId = null;
@@ -156,6 +159,7 @@ exports.createRequest = asyncHandler(async (req, res) => {
     priority,
     status: "pending",
     attachments,
+    requestForNewSite
   });
 
   // Email

@@ -82,6 +82,11 @@ const requestSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    requestForNewSite: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );
